@@ -2,6 +2,17 @@
 Run from /workspaces/UFCML/:
    python setup_project.py
    pip install -r requirements.txt
+   Then open notebooks/01_scraper.ipynb and Run All
+
+LESSONS LEARNED:
+- Event page date is inside TD[0] alongside event name, TD[1] is location
+- Event page ALWAYS lists the winner first (not red corner)
+- Fight detail page lists red corner first, blue corner second, with W/L status
+- Must use fight detail pages to get correct red/blue corner assignment
+- Then rebuild fights.csv with correct corner order + stats
+- Red corner (F1) = UFC-designated favorite (~55% win rate)
+- Uses tqdm (not tqdm.notebook), 10 concurrent threads, ROOT = "."
+- Pre-2015 data dropped (less relevant to modern UFC)
 """
 
 import os
@@ -85,7 +96,7 @@ def make_notebook(filepath, cells):
 scraper_cells = [
     {
         "type": "markdown",
-        "source": "# UFC Stats Scraper\\nScrapes event, fight, and fighter data from ufcstats.com\\n\\nUses 10 concurrent threads for speed."
+        "source": "# UFC Stats Scraper\\n\\nScrapes event, fight, and fighter data from ufcstats.com using 10 concurrent threads.\\n\\n## Important Discovery\\n- The **event page** always lists the **winner first** (not the red corner)\\n- The **fight detail page** lists the **red corner first** with W/L status\\n- We scrape both, then rebuild fights.csv using the detail page for correct corner assignment\\n- **Fighter 1 = Red corner = Favorite**, **Fighter 2 = Blue corner = Underdog**"
     },
     {
         "type": "code",
@@ -127,6 +138,7 @@ print(f"✅ Ready — using {WORKERS} threads")"""
     {
         "type": "code",
         "source": """# Cell 3 — Scrape All Events
+# FIXED: Date is inside TD[0] alongside event name. TD[1] is location.
 def scrape_all_events():
     url = f"{BASE_URL}/statistics/events/completed?page=all"
     soup = get_soup(url)
@@ -137,13 +149,19 @@ def scrape_all_events():
     for row in rows:
         link = row.select_one("a.b-link")
         if link:
-            date_cell = row.select("td")
-            event_name = link.text.strip()
+            cells = row.select("td")
+
+            # Event name and date are both inside TD[0]
+            td0_text = cells[0].get_text(separator="|", strip=True)
+            parts = td0_text.split("|")
+
+            event_name = parts[0].strip()
+            event_date = parts[1].strip() if len(parts) > 1 else ""
+
+            # Location is in TD[1]
+            location = cells[1].text.strip() if len(cells) > 1 else ""
+
             event_url = link["href"]
-            event_date = date_cell[-1].text.strip() if len(date_cell) > 1 else ""
-            location = ""
-            if len(date_cell) > 2:
-                location = date_cell[1].text.strip()
 
             events.append({
                 "event_name": event_name,
@@ -159,11 +177,13 @@ events = scrape_all_events()
 events_df = pd.DataFrame(events)
 events_df.to_csv(f"{DATA_DIR}/events.csv", index=False)
 print(f"✅ Saved {len(events_df)} events")
-events_df.head(10)"""
+print(f"\\nSample dates:")
+print(events_df[["event_name", "event_date", "location"]].head(5).to_string())"""
     },
     {
         "type": "code",
         "source": """# Cell 4 — Scrape Fights From All Events (10 Workers)
+# NOTE: Event page always lists WINNER first. We fix this in Cell 8 using detail pages.
 def scrape_event_fights(event_row):
     event_url = event_row["event_url"]
     event_name = event_row["event_name"]
@@ -192,9 +212,6 @@ def scrape_event_fights(event_row):
         fighter1 = fighter_links[0].text.strip()
         fighter2 = fighter_links[1].text.strip()
 
-        result_icons = cols[0].select("i")
-        win_loss = [icon.text.strip() for icon in result_icons]
-
         def get_col_values(col):
             paragraphs = col.select("p")
             return [p.text.strip() for p in paragraphs]
@@ -213,19 +230,16 @@ def scrape_event_fights(event_row):
             "event_name": event_name,
             "event_date": event_date,
             "fight_url": fight_url,
-            "fighter_1": fighter1,
-            "fighter_2": fighter2,
-            "winner": fighter1 if (win_loss and win_loss[0].lower() == "win") else (
-                fighter2 if (len(win_loss) > 1 and win_loss[1].lower() == "win") else "Draw/NC"
-            ),
-            "f1_kd": kd_vals[0] if len(kd_vals) > 0 else None,
-            "f2_kd": kd_vals[1] if len(kd_vals) > 1 else None,
-            "f1_str": str_vals[0] if len(str_vals) > 0 else None,
-            "f2_str": str_vals[1] if len(str_vals) > 1 else None,
-            "f1_td": td_vals[0] if len(td_vals) > 0 else None,
-            "f2_td": td_vals[1] if len(td_vals) > 1 else None,
-            "f1_sub": sub_vals[0] if len(sub_vals) > 0 else None,
-            "f2_sub": sub_vals[1] if len(sub_vals) > 1 else None,
+            "fighter_1_winner": fighter1,
+            "fighter_2_loser": fighter2,
+            "winner_kd": kd_vals[0] if len(kd_vals) > 0 else None,
+            "loser_kd": kd_vals[1] if len(kd_vals) > 1 else None,
+            "winner_str": str_vals[0] if len(str_vals) > 0 else None,
+            "loser_str": str_vals[1] if len(str_vals) > 1 else None,
+            "winner_td": td_vals[0] if len(td_vals) > 0 else None,
+            "loser_td": td_vals[1] if len(td_vals) > 1 else None,
+            "winner_sub": sub_vals[0] if len(sub_vals) > 0 else None,
+            "loser_sub": sub_vals[1] if len(sub_vals) > 1 else None,
             "weight_class": weight_class,
             "method": method,
             "round": fight_round,
@@ -239,6 +253,7 @@ event_rows = events_df.to_dict("records")
 all_fights = []
 
 print(f"Scraping fights from {len(event_rows)} events with {WORKERS} threads...")
+print("NOTE: Event page lists winner first. We fix corner order in Cell 8.")
 
 with concurrent.futures.ThreadPoolExecutor(max_workers=WORKERS) as executor:
     futures = {executor.submit(scrape_event_fights, row): row for row in event_rows}
@@ -247,10 +262,10 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=WORKERS) as executor:
         if result:
             all_fights.extend(result)
 
-fights_df = pd.DataFrame(all_fights)
-fights_df.to_csv(f"{DATA_DIR}/fights.csv", index=False)
-print(f"\\n✅ Saved {len(fights_df)} fights")
-fights_df.head(10)"""
+fights_raw_df = pd.DataFrame(all_fights)
+fights_raw_df.to_csv(f"{DATA_DIR}/fights_raw.csv", index=False)
+print(f"\\n✅ Saved {len(fights_raw_df)} raw fights (winner-first order)")
+fights_raw_df.head(5)"""
     },
     {
         "type": "code",
@@ -306,11 +321,12 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=WORKERS) as executor:
 fighters_df = pd.DataFrame(all_fighters)
 fighters_df.to_csv(f"{DATA_DIR}/fighters.csv", index=False)
 print(f"\\n✅ Saved {len(fighters_df)} fighters")
-fighters_df.head(10)"""
+fighters_df.head(5)"""
     },
     {
         "type": "code",
         "source": """# Cell 6 — Scrape Detailed Fight Stats (10 Workers)
+# This gives us the TRUE red/blue corner order + W/L status
 def parse_fight_table(table):
     headers = [th.text.strip() for th in table.select("thead th")]
     rows_data = []
@@ -366,11 +382,12 @@ def scrape_one(url):
     except Exception as e:
         return None
 
-fight_urls = fights_df["fight_url"].dropna().unique()
+fight_urls = fights_raw_df["fight_url"].dropna().unique()
 fight_details_list = []
 CHECKPOINT_EVERY = 500
 
 print(f"Scraping {len(fight_urls)} fight detail pages with {WORKERS} threads...")
+print("This gives us correct red/blue corner assignment.")
 
 with concurrent.futures.ThreadPoolExecutor(max_workers=WORKERS) as executor:
     futures = {executor.submit(scrape_one, url): url for url in fight_urls}
@@ -390,17 +407,122 @@ print(f"\\n✅ Saved {len(fight_details_list)} detailed fight records")"""
     },
     {
         "type": "code",
-        "source": """# Cell 7 — Verification
+        "source": """# Cell 7 — Rebuild fights.csv with Correct Red/Blue Corner Order
+# Event page: winner always first. Detail page: red corner always first.
+# We use the detail page to determine true corner assignment,
+# then assign the correct stats from the event page.
+
+detail_lookup = {}
+for fd in fight_details_list:
+    url = fd.get("fight_url", "")
+    f1 = fd.get("fighter_1_name", "").strip()
+    f2 = fd.get("fighter_2_name", "").strip()
+    s1 = fd.get("fighter_1_status", "").strip()
+    s2 = fd.get("fighter_2_status", "").strip()
+    if url and f1:
+        detail_lookup[url] = {
+            "red_corner": f1,
+            "blue_corner": f2,
+            "red_status": s1,
+            "blue_status": s2
+        }
+
+rebuilt = []
+skipped = 0
+
+for _, row in fights_raw_df.iterrows():
+    url = row["fight_url"]
+
+    if url not in detail_lookup:
+        skipped += 1
+        continue
+
+    d = detail_lookup[url]
+    red = d["red_corner"]
+    blue = d["blue_corner"]
+
+    # Determine winner from W/L status
+    if d["red_status"] == "W":
+        winner = red
+    elif d["blue_status"] == "W":
+        winner = blue
+    else:
+        winner = "Draw/NC"
+
+    # Event page winner is always fighter_1_winner
+    event_winner = row["fighter_1_winner"]
+
+    # Assign stats to correct corner
+    if red == event_winner:
+        # Red corner won — event stats order: winner=red, loser=blue
+        red_kd, blue_kd = row["winner_kd"], row["loser_kd"]
+        red_str, blue_str = row["winner_str"], row["loser_str"]
+        red_td, blue_td = row["winner_td"], row["loser_td"]
+        red_sub, blue_sub = row["winner_sub"], row["loser_sub"]
+    else:
+        # Blue corner won — event stats order: winner=blue, loser=red
+        red_kd, blue_kd = row["loser_kd"], row["winner_kd"]
+        red_str, blue_str = row["loser_str"], row["winner_str"]
+        red_td, blue_td = row["loser_td"], row["winner_td"]
+        red_sub, blue_sub = row["loser_sub"], row["winner_sub"]
+
+    rebuilt.append({
+        "event_name": row["event_name"],
+        "event_date": row["event_date"],
+        "fight_url": url,
+        "fighter_1": red,       # Red corner (favorite)
+        "fighter_2": blue,      # Blue corner (underdog)
+        "winner": winner,
+        "f1_kd": red_kd,
+        "f2_kd": blue_kd,
+        "f1_str": red_str,
+        "f2_str": blue_str,
+        "f1_td": red_td,
+        "f2_td": blue_td,
+        "f1_sub": red_sub,
+        "f2_sub": blue_sub,
+        "weight_class": row["weight_class"],
+        "method": row["method"],
+        "round": row["round"],
+        "time": row["time"],
+    })
+
+fights_df = pd.DataFrame(rebuilt)
+
+# Verify
+f1_win = (fights_df["winner"] == fights_df["fighter_1"]).mean()
+f2_win = (fights_df["winner"] == fights_df["fighter_2"]).mean()
+draw_nc = (fights_df["winner"] == "Draw/NC").mean()
+
+print(f"✅ Rebuilt {len(fights_df)} fights with correct corner assignment")
+print(f"   Skipped (no detail page): {skipped}")
+print(f"\\n   Red corner (F1) win rate:  {f1_win:.1%}")
+print(f"   Blue corner (F2) win rate: {f2_win:.1%}")
+print(f"   Draw/NC rate:              {draw_nc:.1%}")
+
+fights_df.to_csv(f"{DATA_DIR}/fights.csv", index=False)
+print(f"\\n✅ Saved corrected fights.csv")
+fights_df.head(10)"""
+    },
+    {
+        "type": "code",
+        "source": """# Cell 8 — Final Verification
 print("=" * 50)
 print("SCRAPING SUMMARY")
 print("=" * 50)
 print(f"Events:         {len(events_df)}")
-print(f"Fights:         {len(fights_df)}")
+print(f"Fights (raw):   {len(fights_raw_df)}")
+print(f"Fights (fixed): {len(fights_df)}")
 print(f"Fighters:       {len(fighters_df)}")
 print(f"Fight Details:  {len(fight_details_list)}")
+f1_win = (fights_df["winner"] == fights_df["fighter_1"]).mean()
+print(f"\\nRed corner win rate: {f1_win:.1%} (this is our baseline)")
+print(f"\\nSample (F1=Red Corner, F2=Blue Corner):")
+print(fights_df[["fighter_1", "fighter_2", "winner", "weight_class", "method"]].head(10).to_string())
 print(f"\\nFiles saved in: {DATA_DIR}/")
 print(f"  - events.csv")
-print(f"  - fights.csv")
+print(f"  - fights_raw.csv   (winner-first order from event pages)")
+print(f"  - fights.csv       (red corner-first order from detail pages)")
 print(f"  - fighters.csv")
 print(f"  - fight_details.json")"""
     },
@@ -412,13 +534,14 @@ print(f"  - fight_details.json")"""
 cleaning_cells = [
     {
         "type": "markdown",
-        "source": "# UFC Data Cleaning\\nProcess raw scraped data into analysis-ready DataFrames."
+        "source": "# UFC Data Cleaning\\n\\nProcess raw scraped data into analysis-ready DataFrames.\\n\\n- **Fighter 1** = Red corner = Favorite\\n- **Fighter 2** = Blue corner = Underdog\\n- Pre-2015 data dropped (less relevant to modern UFC)"
     },
     {
         "type": "code",
         "source": """# Cell 1 — Imports
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 import json
 import re
 
@@ -439,21 +562,72 @@ print(f"Events:        {events.shape}")
 print(f"Fights:        {fights.shape}")
 print(f"Fighters:      {fighters.shape}")
 print(f"Fight details: {len(fight_details)}")
-events.head()"""
+
+f1_wr = (fights["winner"] == fights["fighter_1"]).mean()
+print(f"\\nRed corner win rate: {f1_wr:.1%}")"""
     },
     {
         "type": "code",
-        "source": """# Cell 3 — Clean Events
+        "source": """# Cell 3 — Data Quality by Year
+events["event_date_parsed"] = pd.to_datetime(events["event_date"], format="mixed", errors="coerce")
+event_date_map = events.set_index("event_name")["event_date_parsed"]
+fights["event_date_parsed"] = fights["event_name"].map(event_date_map)
+fights["year"] = fights["event_date_parsed"].dt.year
+
+print("FIGHTS PER YEAR:")
+yearly_counts = fights["year"].value_counts().sort_index()
+print(yearly_counts.to_string())
+
+print("\\nMISSING DATA % BY YEAR:")
+yearly_missing = fights.groupby("year").apply(
+    lambda x: x[["f1_str", "f2_str", "f1_td", "f2_td"]].isna().mean().mean() * 100
+).round(1)
+print(yearly_missing.to_string())
+
+# Plot
+fig, axes = plt.subplots(1, 2, figsize=(16, 5))
+yearly_counts.plot(kind="bar", ax=axes[0])
+axes[0].set_title("Fights Per Year", fontweight="bold")
+axes[0].set_ylabel("Count")
+
+yearly_missing.plot(kind="bar", ax=axes[1], color="orange")
+axes[1].set_title("Avg Missing Data % By Year", fontweight="bold")
+axes[1].set_ylabel("Missing %")
+
+plt.tight_layout()
+plt.show()
+
+total = len(fights)
+post_2015 = len(fights[fights["year"] >= 2015])
+print(f"\\nTotal fights: {total}")
+print(f"Post-2015 fights: {post_2015} ({post_2015/total:.1%})")
+print(f"Would drop: {total - post_2015} ({(total-post_2015)/total:.1%})")"""
+    },
+    {
+        "type": "code",
+        "source": """# Cell 4 — Apply Year Cutoff
+CUTOFF_YEAR = 2015
+
+fights = fights[fights["year"] >= CUTOFF_YEAR].reset_index(drop=True)
+print(f"✅ Filtered to {CUTOFF_YEAR}+ → {len(fights)} fights remaining")
+f1_wr = (fights["winner"] == fights["fighter_1"]).mean()
+print(f"Red corner win rate (post-{CUTOFF_YEAR}): {f1_wr:.1%}")"""
+    },
+    {
+        "type": "code",
+        "source": """# Cell 5 — Clean Events
 events_clean = events.copy()
 events_clean["event_date"] = pd.to_datetime(events_clean["event_date"], format="mixed", errors="coerce")
 events_clean = events_clean.sort_values("event_date", ascending=False).reset_index(drop=True)
+events_clean = events_clean[events_clean["event_date"].dt.year >= CUTOFF_YEAR].reset_index(drop=True)
 
+print(f"Events after {CUTOFF_YEAR} cutoff: {len(events_clean)}")
 print(f"Date range: {events_clean['event_date'].min()} to {events_clean['event_date'].max()}")
 events_clean.head()"""
     },
     {
         "type": "code",
-        "source": """# Cell 4 — Clean Fighters
+        "source": """# Cell 6 — Clean Fighters
 def parse_height_to_inches(height_str):
     if pd.isna(height_str) or str(height_str).strip() in ("", "--"):
         return np.nan
@@ -492,7 +666,7 @@ fighters_clean.head()"""
     },
     {
         "type": "code",
-        "source": """# Cell 5 — Clean Fights
+        "source": """# Cell 7 — Clean Fights
 def parse_strikes(strike_str):
     if pd.isna(strike_str) or str(strike_str).strip() in ("", "--"):
         return np.nan, np.nan
@@ -503,10 +677,12 @@ def parse_strikes(strike_str):
 
 fights_clean = fights.copy()
 
+# Map event dates
 event_dates = events_clean.set_index("event_name")["event_date"]
 fights_clean["event_date"] = fights_clean["event_name"].map(event_dates)
 fights_clean["event_date"] = pd.to_datetime(fights_clean["event_date"], format="mixed", errors="coerce")
 
+# Parse strikes and takedowns for both corners
 for prefix in ["f1", "f2"]:
     landed, attempted = zip(*fights_clean[f"{prefix}_str"].apply(parse_strikes))
     fights_clean[f"{prefix}_str_landed"] = pd.Series(landed)
@@ -524,6 +700,7 @@ for prefix in ["f1", "f2"]:
     fights_clean[f"{prefix}_kd"] = pd.to_numeric(fights_clean[f"{prefix}_kd"], errors="coerce")
     fights_clean[f"{prefix}_sub"] = pd.to_numeric(fights_clean[f"{prefix}_sub"], errors="coerce")
 
+# Parse round and time
 fights_clean["round"] = pd.to_numeric(fights_clean["round"], errors="coerce")
 
 def time_to_seconds(t):
@@ -537,8 +714,10 @@ def time_to_seconds(t):
 fights_clean["time_seconds"] = fights_clean["time"].apply(time_to_seconds)
 fights_clean["total_time_seconds"] = ((fights_clean["round"] - 1) * 5 * 60) + fights_clean["time_seconds"]
 
+# Target variable: did red corner (fighter_1 / favorite) win?
 fights_clean["f1_win"] = (fights_clean["winner"] == fights_clean["fighter_1"]).astype(int)
 
+# Clean method
 fights_clean["method_clean"] = fights_clean["method"].str.strip().str.upper()
 fights_clean["finish_type"] = fights_clean["method_clean"].apply(lambda x:
     "KO/TKO" if "KO" in str(x) else
@@ -549,12 +728,17 @@ fights_clean["finish_type"] = fights_clean["method_clean"].apply(lambda x:
 
 fights_clean["weight_class"] = fights_clean["weight_class"].str.strip()
 
+# Drop temp columns
+fights_clean = fights_clean.drop(columns=["event_date_parsed", "year"], errors="ignore")
+
 print(f"Fights: {fights_clean.shape}")
+print(f"\\n🔴 Red corner (F1/favorite) win rate: {fights_clean['f1_win'].mean():.1%}")
+print(f"🔵 Blue corner (F2/underdog) win rate: {1 - fights_clean['f1_win'].mean():.1%}")
 fights_clean.head()"""
     },
     {
         "type": "code",
-        "source": """# Cell 6 — Save Cleaned Data
+        "source": """# Cell 8 — Save Cleaned Data
 events_clean.to_csv(f"{DATA_DIR}/events_clean.csv", index=False)
 fighters_clean.to_csv(f"{DATA_DIR}/fighters_clean.csv", index=False)
 fights_clean.to_csv(f"{DATA_DIR}/fights_clean.csv", index=False)
@@ -562,7 +746,9 @@ fights_clean.to_csv(f"{DATA_DIR}/fights_clean.csv", index=False)
 print("✅ Cleaned data saved:")
 print(f"   Events:   {len(events_clean)} rows → {DATA_DIR}/events_clean.csv")
 print(f"   Fighters: {len(fighters_clean)} rows → {DATA_DIR}/fighters_clean.csv")
-print(f"   Fights:   {len(fights_clean)} rows → {DATA_DIR}/fights_clean.csv")"""
+print(f"   Fights:   {len(fights_clean)} rows → {DATA_DIR}/fights_clean.csv")
+print(f"\\n   Year cutoff: {CUTOFF_YEAR}+")
+print(f"   🔴 Red corner (favorite) win rate: {fights_clean['f1_win'].mean():.1%} ← baseline to beat")"""
     },
 ]
 
@@ -572,7 +758,7 @@ print(f"   Fights:   {len(fights_clean)} rows → {DATA_DIR}/fights_clean.csv")"
 eda_cells = [
     {
         "type": "markdown",
-        "source": "# UFC Fight Data — Exploratory Data Analysis"
+        "source": "# UFC Fight Data — Exploratory Data Analysis\\n\\n- **Fighter 1 (F1)** = Red corner = UFC-designated favorite\\n- **Fighter 2 (F2)** = Blue corner = Underdog\\n- Red corner win rate (~55%) is our naive baseline to beat"
     },
     {
         "type": "code",
@@ -617,11 +803,15 @@ axes[0].pie(method_counts, labels=method_counts.index, autopct="%1.1f%%",
 axes[0].set_title("Fight Finish Methods", fontsize=14, fontweight="bold")
 
 f1_wr = fights["f1_win"].mean()
-axes[1].bar(["Fighter 1 Wins", "Fighter 2 Wins"], [f1_wr, 1 - f1_wr],
-            color=["#2ecc71", "#e74c3c"])
+draw_rate = (fights["winner"] == "Draw/NC").mean()
+f2_wr = 1 - f1_wr - draw_rate
+axes[1].bar(["Red Corner\\n(Favorite)", "Blue Corner\\n(Underdog)", "Draw/NC"],
+            [f1_wr, f2_wr, draw_rate],
+            color=["#e74c3c", "#3498db", "#95a5a6"])
 axes[1].set_ylabel("Proportion")
-axes[1].set_title(f"Positional Bias Check\\n(F1 win rate: {f1_wr:.3f})", fontsize=14, fontweight="bold")
+axes[1].set_title(f"Corner Win Rates\\nRed: {f1_wr:.1%} | Blue: {f2_wr:.1%}", fontsize=14, fontweight="bold")
 axes[1].set_ylim(0, 1)
+axes[1].axhline(y=0.5, color="gray", linestyle="--", alpha=0.5)
 
 round_counts = fights["round"].value_counts().sort_index()
 axes[2].bar(round_counts.index, round_counts.values, color=sns.color_palette("viridis", len(round_counts)))
@@ -635,7 +825,7 @@ plt.show()"""
     },
     {
         "type": "code",
-        "source": """# Cell 4 — Fights Over Time
+        "source": """# Cell 4 — Fights Over Time + Red Corner Win Rate Trend
 fig, axes = plt.subplots(2, 1, figsize=(14, 10))
 
 fights["year"] = fights["event_date"].dt.year
@@ -646,13 +836,15 @@ axes[0].set_title("Number of UFC Fights Per Year", fontsize=14, fontweight="bold
 axes[0].set_xlabel("Year")
 axes[0].set_ylabel("Number of Fights")
 
-finish_by_year = fights.groupby(["year", "finish_type"]).size().unstack(fill_value=0)
-finish_pct = finish_by_year.div(finish_by_year.sum(axis=1), axis=0)
-finish_pct.plot(kind="area", stacked=True, ax=axes[1], alpha=0.7)
-axes[1].set_title("Fight Finish Methods Over Time (Proportion)", fontsize=14, fontweight="bold")
+# Red corner win rate over time
+yearly_f1_wr = fights.groupby("year")["f1_win"].mean()
+axes[1].plot(yearly_f1_wr.index, yearly_f1_wr.values, marker="o", linewidth=2, markersize=6, color="#e74c3c")
+axes[1].axhline(y=0.5, color="gray", linestyle="--", alpha=0.7)
+axes[1].fill_between(yearly_f1_wr.index, 0.5, yearly_f1_wr.values, alpha=0.2, color="#e74c3c")
+axes[1].set_title("Red Corner (Favorite) Win Rate Over Time", fontsize=14, fontweight="bold")
 axes[1].set_xlabel("Year")
-axes[1].set_ylabel("Proportion")
-axes[1].legend(title="Finish Type", loc="upper right")
+axes[1].set_ylabel("Win Rate")
+axes[1].set_ylim(0.35, 0.75)
 
 plt.tight_layout()
 plt.savefig(f"{DATA_DIR}/eda_time_trends.png", dpi=150, bbox_inches="tight")
@@ -685,9 +877,10 @@ plt.show()"""
     },
     {
         "type": "code",
-        "source": """# Cell 6 — Striking Analysis
+        "source": """# Cell 6 — Striking Analysis (Red vs Blue Corner)
 fig, axes = plt.subplots(2, 2, figsize=(14, 12))
 
+# Winner vs loser strikes
 fights["winner_str_landed"] = np.where(
     fights["f1_win"] == 1, fights["f1_str_landed"], fights["f2_str_landed"]
 )
@@ -702,6 +895,7 @@ axes[0, 0].set_ylabel("Frequency")
 axes[0, 0].set_title("Strikes Landed: Winner vs Loser", fontsize=13, fontweight="bold")
 axes[0, 0].legend()
 
+# Winner vs loser accuracy
 fights["winner_str_acc"] = np.where(fights["f1_win"] == 1, fights["f1_str_acc"], fights["f2_str_acc"])
 fights["loser_str_acc"] = np.where(fights["f1_win"] == 1, fights["f2_str_acc"], fights["f1_str_acc"])
 
@@ -711,16 +905,18 @@ axes[0, 1].set_xlabel("Striking Accuracy")
 axes[0, 1].set_title("Striking Accuracy: Winner vs Loser", fontsize=13, fontweight="bold")
 axes[0, 1].legend()
 
+# Knockdown differential
 kd_diff = fights["f1_kd"].fillna(0) - fights["f2_kd"].fillna(0)
 fights["kd_diff"] = kd_diff
 kd_win_rate = fights.groupby("kd_diff")["f1_win"].mean()
 kd_win_rate = kd_win_rate[(kd_win_rate.index >= -3) & (kd_win_rate.index <= 3)]
 axes[1, 0].bar(kd_win_rate.index, kd_win_rate.values, color=sns.color_palette("RdYlGn", len(kd_win_rate)))
 axes[1, 0].axhline(y=0.5, color="gray", linestyle="--", alpha=0.7)
-axes[1, 0].set_xlabel("Knockdown Differential (F1 - F2)")
-axes[1, 0].set_ylabel("F1 Win Rate")
+axes[1, 0].set_xlabel("Knockdown Differential (Red - Blue)")
+axes[1, 0].set_ylabel("Red Corner Win Rate")
 axes[1, 0].set_title("Knockdown Differential vs Win Rate", fontsize=13, fontweight="bold")
 
+# Strike differential
 fights["str_diff"] = fights["f1_str_landed"].fillna(0) - fights["f2_str_landed"].fillna(0)
 fights["str_diff_bin"] = pd.cut(fights["str_diff"], bins=20)
 str_win = fights.groupby("str_diff_bin", observed=True)["f1_win"].agg(["mean", "count"])
@@ -729,8 +925,8 @@ str_win = str_win[str_win["count"] >= 10]
 x_vals = [interval.mid for interval in str_win.index]
 axes[1, 1].scatter(x_vals, str_win["mean"], s=str_win["count"], alpha=0.6, c="#3498db")
 axes[1, 1].axhline(y=0.5, color="gray", linestyle="--", alpha=0.7)
-axes[1, 1].set_xlabel("Strike Differential (F1 - F2)")
-axes[1, 1].set_ylabel("F1 Win Probability")
+axes[1, 1].set_xlabel("Strike Differential (Red - Blue)")
+axes[1, 1].set_ylabel("Red Corner Win Probability")
 axes[1, 1].set_title("Strike Differential vs Win Probability\\n(size = sample count)", fontsize=13, fontweight="bold")
 
 plt.tight_layout()
@@ -772,7 +968,7 @@ fig, ax = plt.subplots(figsize=(14, 10))
 mask = np.triu(np.ones_like(corr_matrix, dtype=bool))
 sns.heatmap(corr_matrix, mask=mask, annot=True, fmt=".2f", cmap="RdBu_r",
             center=0, vmin=-1, vmax=1, square=True, ax=ax)
-ax.set_title("Feature Correlation Matrix", fontsize=16, fontweight="bold")
+ax.set_title("Feature Correlation Matrix\\n(F1 = Red/Favorite, F2 = Blue/Underdog)", fontsize=16, fontweight="bold")
 plt.tight_layout()
 plt.savefig(f"{DATA_DIR}/eda_correlations.png", dpi=150, bbox_inches="tight")
 plt.show()"""
@@ -802,15 +998,15 @@ print(f"   Avg sig. strikes landed (loser): {fights['loser_str_landed'].mean():.
 print(f"   Avg striking accuracy (winner): {fights['winner_str_acc'].mean():.1%}")
 print(f"   Avg striking accuracy (loser): {fights['loser_str_acc'].mean():.1%}")
 
-print(f"\\n⚖️ POSITIONAL ANALYSIS (Red Corner = Favorite):")
-print(f"   Fighter 1 (red corner) win rate: {fights['f1_win'].mean():.1%}")
-print(f"   This suggests {'significant' if abs(fights['f1_win'].mean() - 0.5) > 0.05 else 'minimal'} positional bias")
-print(f"   Red corner baseline will be our naive model to beat")"""
+print(f"\\n🔴 RED CORNER ANALYSIS (Favorite = Fighter 1):")
+print(f"   Red corner win rate: {fights['f1_win'].mean():.1%}")
+print(f"   ⚠️  This is our BASELINE — any model must beat {fights['f1_win'].mean():.1%}")
+print(f"   Red corner = UFC-designated favorite (higher ranked)")"""
     },
     {
         "type": "code",
         "source": """# Cell 10 — Correlations & Data Quality
-print("🔗 TOP CORRELATIONS WITH F1 WINNING:")
+print("🔗 TOP CORRELATIONS WITH RED CORNER WINNING:")
 win_corr = corr_matrix["f1_win"].drop("f1_win").sort_values(key=abs, ascending=False)
 for feat, corr in win_corr.head(8).items():
     direction = "↑" if corr > 0 else "↓"
@@ -838,8 +1034,8 @@ print(fights["weight_class"].value_counts().to_string())"""
 # ─────────────────────────────────────────────
 print("Creating UFC Predictor project...\n")
 print(f"  ✅ Created directories")
-print(f"  ✅ Created {ROOT}/.gitignore")
-print(f"  ✅ Created {ROOT}/requirements.txt")
+print(f"  ✅ Created .gitignore")
+print(f"  ✅ Created requirements.txt")
 
 make_notebook(f"{ROOT}/notebooks/01_scraper.ipynb", scraper_cells)
 make_notebook(f"{ROOT}/notebooks/02_data_cleaning.ipynb", cleaning_cells)
