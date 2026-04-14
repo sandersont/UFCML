@@ -1,754 +1,825 @@
 #!/usr/bin/env python3
-"""create_05_modeling.py — generates notebooks/05_modeling.ipynb"""
+"""create_05_modeling.py — Generates notebooks/05_modeling.ipynb
+Baseline models with default hyperparameters.
+Split: train 2015–mid 2025, test mid 2025–2026.
+"""
 
-import json, pathlib
-
-cells = []
-def code(source, **kw):
-    cells.append({
-        "cell_type": "code",
-        "execution_count": None,
-        "metadata": {},
-        "outputs": [],
-        "source": [line + "\n" for line in source.strip().splitlines()]
-    })
+import nbformat as nbf
+import os
 
 def md(source):
-    cells.append({
-        "cell_type": "markdown",
-        "metadata": {},
-        "source": [line + "\n" for line in source.strip().splitlines()]
-    })
+    return nbf.v4.new_markdown_cell(source.strip())
 
-# ── Cell 1 ── Imports & Load ─────────────────────────────────────────
-md("""# 05 — Modeling
-Train XGBoost, LightGBM, CatBoost on engineered features.  
-Temporal train/test split, TimeSeriesSplit CV, ensemble, ablation, error analysis.""")
+def code(source):
+    return nbf.v4.new_code_cell(source.strip())
 
-code("""
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from pathlib import Path
-import warnings, os, pickle, time
-warnings.filterwarnings('ignore')
-
-from sklearn.metrics import (accuracy_score, log_loss, roc_auc_score,
-                             brier_score_loss, classification_report,
-                             confusion_matrix, calibration_curve)
-from sklearn.model_selection import TimeSeriesSplit
-import xgboost as xgb
-import lightgbm as lgb
-import catboost as cb
-
-DATA = './data/' if os.path.exists('./data/model_data.csv') else '../data/'
-df = pd.read_csv(f'{DATA}model_data.csv', parse_dates=['event_date'])
-df = df.sort_values('event_date').reset_index(drop=True)
-
-print(f"Loaded: {df.shape}")
-print(f"Date range: {df.event_date.min().date()} to {df.event_date.max().date()}")
-print(f"Target mean (f1_win): {df.f1_win.mean():.3f}")
-print(f"Baseline (always pick red): {df.f1_win.mean():.1%}")
-""")
-
-# ── Cell 2 ── Feature Selection & Temporal Split ─────────────────────
-md("""## Feature Selection & Temporal Split
-Train on 2015–2023, test on 2024–2026.  
-Exclude identity columns, string categoricals, and raw in-fight stats.""")
-
-code("""
-# ── Temporal split ──
-TRAIN_END = '2023-12-31'
-train = df[df.event_date <= TRAIN_END].copy()
-test  = df[df.event_date >  TRAIN_END].copy()
-
-print(f"Train: {len(train)} fights  ({train.event_date.min().date()} → {train.event_date.max().date()})")
-print(f"Test:  {len(test)} fights  ({test.event_date.min().date()} → {test.event_date.max().date()})")
-print(f"Train red WR: {train.f1_win.mean():.3f}")
-print(f"Test  red WR: {test.f1_win.mean():.3f}")
-
-# ── Columns to EXCLUDE ──
-# Identity / target / post-fight info
-IDENTITY = ['event_name', 'event_date', 'fight_url', 'fighter_1', 'fighter_2',
-            'winner', 'f1_win', 'method_clean', 'finish_type', 'round', 'time',
-            'time_seconds', 'total_time_seconds', 'weight_class',
-            'stance_matchup', 'f1_stance', 'f2_stance']
-
-# Raw in-fight stats (current fight — would be leakage)
-IN_FIGHT = [c for c in df.columns if any(c.startswith(p) for p in [
-    'f1_kd','f2_kd','f1_sub','f2_sub','f1_str_','f2_str_',
-    'f1_total_str','f2_total_str','f1_td_','f2_td_',
-    'f1_head_','f2_head_','f1_body_','f2_body_',
-    'f1_leg_','f2_leg_','f1_distance_','f2_distance_',
-    'f1_clinch_','f2_clinch_','f1_ground_','f2_ground_',
-    'f1_ctrl_','f2_ctrl_','f1_rev','f2_rev'])]
-
-EXCLUDE = set(IDENTITY + IN_FIGHT)
-
-# ── Feature lists ──
-all_features = sorted([c for c in df.columns if c not in EXCLUDE])
-diff_features = [c for c in all_features if c.startswith('diff_')]
-profile_features = [c for c in all_features if 'profile' in c]
-rolling_features = [c for c in diff_features if 'profile' not in c]
-physical_features = [c for c in diff_features if any(k in c for k in
-                     ['height','reach','age','ape','weight_lbs'])]
-
-print(f"\\nFeature counts:")
-print(f"  All features:      {len(all_features)}")
-print(f"  Diff features:     {len(diff_features)}")
-print(f"  Profile features:  {len(profile_features)}")
-print(f"  Rolling diffs:     {len(rolling_features)}")
-print(f"  Physical diffs:    {len(physical_features)}")
-
-# ── Sanity: no leaky columns ──
-leaky_check = [f for f in all_features if f in EXCLUDE]
-assert len(leaky_check) == 0, f"Leaky columns in features: {leaky_check}"
-print(f"\\nLeakage check: PASSED ✅ (0 excluded columns in feature set)")
-
-TARGET = 'f1_win'
-X_train, y_train = train[all_features], train[TARGET]
-X_test,  y_test  = test[all_features],  test[TARGET]
-
-# Baseline
-baseline_acc = max(y_test.mean(), 1 - y_test.mean())
-baseline_probs = np.full(len(y_test), y_train.mean())
-baseline_ll = log_loss(y_test, baseline_probs)
-print(f"\\nTest baseline accuracy (always red): {baseline_acc:.3f}")
-print(f"Test baseline log loss (calibrated):  {baseline_ll:.3f}")
-""")
-
-# ── Cell 3 ── TimeSeriesSplit CV Utility ─────────────────────────────
-md("""## Cross-Validation Setup
-TimeSeriesSplit respects temporal ordering — no future leakage in CV folds.""")
-
-code("""
-def temporal_cv(model_fn, X, y, n_splits=5, label='Model'):
-    \"\"\"TimeSeriesSplit CV. model_fn(X_tr, y_tr) → fitted model.\"\"\"
-    tscv = TimeSeriesSplit(n_splits=n_splits)
-    results = {'accuracy': [], 'log_loss': [], 'roc_auc': [], 'brier': []}
-
-    print(f"\\n{'='*60}")
-    print(f"{label} — {n_splits}-Fold TimeSeriesSplit CV")
-    print(f"{'='*60}")
-
-    for fold, (tr_idx, val_idx) in enumerate(tscv.split(X)):
-        X_tr, X_val = X.iloc[tr_idx], X.iloc[val_idx]
-        y_tr, y_val = y.iloc[tr_idx], y.iloc[val_idx]
-
-        model = model_fn(X_tr, y_tr)
-
-        if hasattr(model, 'predict_proba'):
-            probs = model.predict_proba(X_val)[:, 1]
-        else:
-            probs = model.predict(X_val)
-
-        preds = (probs >= 0.5).astype(int)
-        fold_baseline = max(y_val.mean(), 1 - y_val.mean())
-
-        results['accuracy'].append(accuracy_score(y_val, preds))
-        results['log_loss'].append(log_loss(y_val, probs))
-        results['roc_auc'].append(roc_auc_score(y_val, probs))
-        results['brier'].append(brier_score_loss(y_val, probs))
-
-        print(f"  Fold {fold+1}: n={len(val_idx):>4d}  "
-              f"acc={results['accuracy'][-1]:.3f} (base={fold_baseline:.3f})  "
-              f"AUC={results['roc_auc'][-1]:.3f}  "
-              f"logloss={results['log_loss'][-1]:.3f}")
-
-    for metric in results:
-        results[metric] = np.array(results[metric])
-
-    print(f"\\n  MEAN ± STD:")
-    print(f"    Accuracy:  {results['accuracy'].mean():.3f} ± {results['accuracy'].std():.3f}")
-    print(f"    AUC:       {results['roc_auc'].mean():.3f} ± {results['roc_auc'].std():.3f}")
-    print(f"    Log Loss:  {results['log_loss'].mean():.3f} ± {results['log_loss'].std():.3f}")
-    print(f"    Brier:     {results['brier'].mean():.3f} ± {results['brier'].std():.3f}")
-
-    return results, model  # returns last fold's model (largest training set)
-""")
-
-# ── Cell 4 ── XGBoost ────────────────────────────────────────────────
-md("""## XGBoost
-Conservative hyperparameters: depth 5, 500 trees, regularization on.  
-XGBoost handles NaN natively.""")
-
-code("""
-def train_xgb(X_tr, y_tr):
-    model = xgb.XGBClassifier(
-        n_estimators=500,
-        max_depth=5,
-        learning_rate=0.05,
-        subsample=0.8,
-        colsample_bytree=0.7,
-        reg_alpha=1.0,
-        reg_lambda=1.0,
-        min_child_weight=5,
-        eval_metric='logloss',
-        random_state=42,
-        n_jobs=-1,
-    )
-    model.fit(X_tr, y_tr, verbose=False)
-    return model
-
-t0 = time.time()
-xgb_cv, _ = temporal_cv(train_xgb, X_train, y_train, label='XGBoost')
-
-# Final model on all training data
-xgb_model = train_xgb(X_train, y_train)
-xgb_probs = xgb_model.predict_proba(X_test)[:, 1]
-xgb_preds = (xgb_probs >= 0.5).astype(int)
-
-print(f"\\n  TEST SET:")
-print(f"    Accuracy:  {accuracy_score(y_test, xgb_preds):.3f}  (baseline: {baseline_acc:.3f})")
-print(f"    AUC:       {roc_auc_score(y_test, xgb_probs):.3f}")
-print(f"    Log Loss:  {log_loss(y_test, xgb_probs):.3f}")
-print(f"    Time:      {time.time()-t0:.1f}s")
-""")
-
-# ── Cell 5 ── LightGBM ───────────────────────────────────────────────
-md("""## LightGBM
-Similar hyperparameters. LightGBM uses NaN as a native split direction.""")
-
-code("""
-def train_lgb(X_tr, y_tr):
-    model = lgb.LGBMClassifier(
-        n_estimators=500,
-        max_depth=5,
-        learning_rate=0.05,
-        subsample=0.8,
-        colsample_bytree=0.7,
-        reg_alpha=1.0,
-        reg_lambda=1.0,
-        min_child_samples=20,
-        random_state=42,
-        n_jobs=-1,
-        verbosity=-1,
-    )
-    model.fit(X_tr, y_tr)
-    return model
-
-t0 = time.time()
-lgb_cv, _ = temporal_cv(train_lgb, X_train, y_train, label='LightGBM')
-
-lgb_model = train_lgb(X_train, y_train)
-lgb_probs = lgb_model.predict_proba(X_test)[:, 1]
-lgb_preds = (lgb_probs >= 0.5).astype(int)
-
-print(f"\\n  TEST SET:")
-print(f"    Accuracy:  {accuracy_score(y_test, lgb_preds):.3f}  (baseline: {baseline_acc:.3f})")
-print(f"    AUC:       {roc_auc_score(y_test, lgb_probs):.3f}")
-print(f"    Log Loss:  {log_loss(y_test, lgb_probs):.3f}")
-print(f"    Time:      {time.time()-t0:.1f}s")
-""")
-
-# ── Cell 6 ── CatBoost ───────────────────────────────────────────────
-md("""## CatBoost
-auto_class_weights='Balanced' tested here to see if it helps blue-corner recall.""")
-
-code("""
-def train_cat(X_tr, y_tr):
-    model = cb.CatBoostClassifier(
-        iterations=500,
-        depth=5,
-        learning_rate=0.05,
-        subsample=0.8,
-        l2_leaf_reg=3.0,
-        random_seed=42,
-        verbose=0,
-        eval_metric='Logloss',
-        auto_class_weights='Balanced',
-    )
-    model.fit(X_tr, y_tr)
-    return model
-
-t0 = time.time()
-cat_cv, _ = temporal_cv(train_cat, X_train, y_train, label='CatBoost')
-
-cat_model = train_cat(X_train, y_train)
-cat_probs = cat_model.predict_proba(X_test)[:, 1]
-cat_preds = (cat_probs >= 0.5).astype(int)
-
-print(f"\\n  TEST SET:")
-print(f"    Accuracy:  {accuracy_score(y_test, cat_preds):.3f}  (baseline: {baseline_acc:.3f})")
-print(f"    AUC:       {roc_auc_score(y_test, cat_probs):.3f}")
-print(f"    Log Loss:  {log_loss(y_test, cat_probs):.3f}")
-print(f"    Time:      {time.time()-t0:.1f}s")
-""")
-
-# ── Cell 7 ── Model Comparison Table ─────────────────────────────────
-md("""## Model Comparison""")
-
-code("""
-models = {
-    'XGBoost':  (xgb_preds, xgb_probs, xgb_cv),
-    'LightGBM': (lgb_preds, lgb_probs, lgb_cv),
-    'CatBoost': (cat_preds, cat_probs, cat_cv),
+nb = nbf.v4.new_notebook()
+nb["metadata"] = {
+    "kernelspec": {
+        "display_name": "Python 3",
+        "language": "python",
+        "name": "python3",
+    }
 }
 
-print(f"{'Model':<12} {'CV Acc':>8} {'Test Acc':>9} {'Lift':>7} "
-      f"{'AUC':>6} {'LogLoss':>8} {'Brier':>7}")
-print("─" * 65)
+# ═══════════════════════════════════════════════════════════════════════════════
+# CELL 1 — Intro
+# ═══════════════════════════════════════════════════════════════════════════════
+nb.cells.append(md("""
+# 05 — Baseline Modeling
 
-# Baseline row
-print(f"{'Baseline':<12} {'—':>8} {baseline_acc:>9.3f} {'—':>7} "
-      f"{'0.500':>6} {baseline_ll:>8.3f} "
-      f"{brier_score_loss(y_test, baseline_probs):>7.3f}")
+**Goal:** Establish baseline performance with default hyperparameters before tuning.
 
-best_name, best_acc = None, 0
-for name, (preds, probs, cv) in models.items():
-    cv_acc  = cv['accuracy'].mean()
-    test_acc = accuracy_score(y_test, preds)
-    lift    = test_acc - baseline_acc
-    auc     = roc_auc_score(y_test, probs)
-    ll      = log_loss(y_test, probs)
-    brier   = brier_score_loss(y_test, probs)
-    print(f"{name:<12} {cv_acc:>8.3f} {test_acc:>9.3f} {lift:>+7.3f} "
-          f"{auc:>6.3f} {ll:>8.3f} {brier:>7.3f}")
-    if test_acc > best_acc:
-        best_name, best_acc = name, test_acc
+**Split:** Train on 2015 → mid-2025, test on mid-2025 → 2026.
+- ~5,000 training fights, ~400+ test fights
+- Test set is pure out-of-time: the model never sees any 2025H2/2026 data during training or CV
 
-print(f"\\nBest model by test accuracy: {best_name} ({best_acc:.3f})")
-""")
+**Models:** XGBoost, LightGBM, CatBoost (conservative defaults), plus average ensemble.
 
-# ── Cell 8 ── Feature Importance ─────────────────────────────────────
-md("""## Feature Importance
-Top 20 features per model, color-coded by feature group.  
-Consensus ranking averages rank across all three models.""")
+**Evaluation:**
+- Accuracy, AUC, log loss, Brier score
+- Feature importance (per-model + consensus)
+- Ablation study (which feature groups matter?)
+- Calibration analysis
+- Error analysis (where does the model fail?)
+"""))
 
-code("""
-fig, axes = plt.subplots(1, 3, figsize=(24, 10))
+# ═══════════════════════════════════════════════════════════════════════════════
+# CELL 2 — Imports & Load
+# ═══════════════════════════════════════════════════════════════════════════════
+nb.cells.append(code("""
+import pandas as pd
+import numpy as np
+import json, os, warnings
+from pathlib import Path
 
-def get_color(f):
-    if 'profile' in f:   return '#e74c3c'    # red
-    if 'last3' in f or 'last5' in f: return '#3498db'  # blue
-    if 'career' in f:    return '#2ecc71'    # green
-    if any(k in f for k in ['age','height','reach','ape','weight']): return '#f39c12'  # orange
-    if any(k in f for k in ['streak','days','fights_per','activity']): return '#9b59b6'  # purple
-    return '#95a5a6'  # gray
+from xgboost import XGBClassifier
+from lightgbm import LGBMClassifier
+from catboost import CatBoostClassifier
 
-model_objs = [('XGBoost', xgb_model), ('LightGBM', lgb_model), ('CatBoost', cat_model)]
+from sklearn.model_selection import TimeSeriesSplit
+from sklearn.metrics import (accuracy_score, log_loss, roc_auc_score,
+                             brier_score_loss, classification_report,
+                             confusion_matrix)
+from sklearn.calibration import calibration_curve
 
-for ax, (name, model) in zip(axes, model_objs):
-    if name == 'CatBoost':
-        imp = model.get_feature_importance()
-    else:
-        imp = model.feature_importances_
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-    feat_imp = pd.Series(imp, index=all_features).sort_values(ascending=False)
-    top20 = feat_imp.head(20)
-    colors = [get_color(f) for f in top20.index]
+warnings.filterwarnings('ignore')
+plt.rcParams['figure.dpi'] = 120
+plt.rcParams['font.size'] = 10
 
-    top20.plot.barh(ax=ax, color=colors)
-    ax.set_title(f'{name} — Top 20 Features', fontsize=14, fontweight='bold')
-    ax.invert_yaxis()
+# Auto-detect data path
+DATA = Path('./data') if Path('./data/model_data.csv').exists() else Path('../data')
+MODEL_DIR = Path('../models') if not Path('./models').exists() else Path('./models')
+MODEL_DIR.mkdir(exist_ok=True)
+
+print(f"Data path:  {DATA.resolve()}")
+print(f"Model path: {MODEL_DIR.resolve()}")
+
+df = pd.read_csv(DATA / 'model_data.csv', parse_dates=['event_date'])
+df = df.sort_values('event_date').reset_index(drop=True)
+
+print(f"Loaded: {df.shape[0]:,} fights × {df.shape[1]} columns")
+print(f"Date range: {df['event_date'].min().date()} → {df['event_date'].max().date()}")
+print(f"Overall red win rate: {df['f1_win'].mean():.3f}")
+"""))
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CELL 3 — Feature selection & temporal split
+# ═══════════════════════════════════════════════════════════════════════════════
+nb.cells.append(md("""
+## Feature Selection & Temporal Split
+
+Drop identity/target/post-fight columns. Split at mid-2025 so the test set
+covers the most recent ~9 months of fights.
+"""))
+
+nb.cells.append(code("""
+target = 'f1_win'
+
+# Columns to exclude from features
+drop_cols = [
+    'event_name', 'event_date', 'fight_url', 'fighter_1', 'fighter_2',
+    'winner', 'weight_class', 'round', 'time', 'method_clean', 'finish_type',
+    'f1_win', 'stance_matchup', 'f1_stance', 'f2_stance'
+]
+
+feature_cols = sorted([c for c in df.columns if c not in drop_cols])
+print(f"Features: {len(feature_cols)}")
+
+# ── Temporal split ──
+SPLIT_DATE = '2025-07-01'
+
+train_mask = df['event_date'] < SPLIT_DATE
+test_mask  = df['event_date'] >= SPLIT_DATE
+
+# Show actual event boundary
+last_train = df.loc[train_mask, 'event_date'].max()
+first_test = df.loc[test_mask, 'event_date'].min()
+print(f"\\nSplit boundary: last train event {last_train.date()} | first test event {first_test.date()}")
+
+X_train = df.loc[train_mask, feature_cols]
+y_train = df.loc[train_mask, target]
+X_test  = df.loc[test_mask, feature_cols]
+y_test  = df.loc[test_mask, target]
+
+baseline_acc = y_test.mean()
+baseline_ll  = log_loss(y_test, np.full(len(y_test), y_train.mean()))
+
+print(f"\\nTrain: {len(X_train):,} fights  ({df.loc[train_mask, 'event_date'].min().date()} → {last_train.date()})")
+print(f"Test:  {len(X_test):,} fights  ({first_test.date()} → {df.loc[test_mask, 'event_date'].max().date()})")
+print(f"\\nTest baseline (always pick red): {baseline_acc:.3f}")
+print(f"Test baseline log loss:           {baseline_ll:.3f}")
+
+# Test set composition
+print(f"\\nTest fights by year-month:")
+monthly = df.loc[test_mask].groupby(df.loc[test_mask, 'event_date'].dt.to_period('M')).size()
+for period, count in monthly.items():
+    print(f"  {period}: {count} fights")
+"""))
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CELL 4 — TimeSeriesSplit CV utility
+# ═══════════════════════════════════════════════════════════════════════════════
+nb.cells.append(md("""
+## Cross-Validation Utility
+
+5-fold TimeSeriesSplit on training data. Returns per-fold and aggregate metrics.
+"""))
+
+nb.cells.append(code("""
+N_SPLITS = 5
+tscv = TimeSeriesSplit(n_splits=N_SPLITS)
+cv_splits = list(tscv.split(X_train))
+
+print(f"TimeSeriesSplit: {N_SPLITS} folds")
+for i, (tr_idx, val_idx) in enumerate(cv_splits):
+    val_dates = df.loc[train_mask].iloc[val_idx]['event_date']
+    print(f"  Fold {i+1}: train {len(tr_idx):,} → val {len(val_idx):,}  "
+          f"({val_dates.min().date()} → {val_dates.max().date()})")
+
+
+def evaluate_cv(model_class, params, name="Model"):
+    \"\"\"Run TimeSeriesSplit CV + final test evaluation.\"\"\"
+    fold_results = []
+
+    for i, (tr_idx, val_idx) in enumerate(cv_splits):
+        X_tr, X_val = X_train.iloc[tr_idx], X_train.iloc[val_idx]
+        y_tr, y_val = y_train.iloc[tr_idx], y_train.iloc[val_idx]
+
+        model = model_class(**params)
+        model.fit(X_tr, y_tr)
+
+        y_prob = model.predict_proba(X_val)[:, 1]
+        y_pred = (y_prob >= 0.5).astype(int)
+
+        fold_results.append({
+            'fold': i + 1,
+            'acc':   accuracy_score(y_val, y_pred),
+            'auc':   roc_auc_score(y_val, y_prob),
+            'll':    log_loss(y_val, y_prob),
+            'brier': brier_score_loss(y_val, y_prob),
+            'n_val': len(y_val),
+        })
+
+    cv_df = pd.DataFrame(fold_results)
+
+    # Print CV results
+    print(f"\\n{'─'*60}")
+    print(f"{name} — Cross-Validation")
+    print(f"{'─'*60}")
+    for _, row in cv_df.iterrows():
+        print(f"  Fold {row['fold']:.0f}: acc={row['acc']:.3f}  auc={row['auc']:.3f}  "
+              f"ll={row['ll']:.3f}  (n={row['n_val']:.0f})")
+    print(f"  {'Mean':>7s}: acc={cv_df['acc'].mean():.3f}  auc={cv_df['auc'].mean():.3f}  "
+          f"ll={cv_df['ll'].mean():.3f}  brier={cv_df['brier'].mean():.3f}")
+
+    # Train on full training set, evaluate on test
+    final_model = model_class(**params)
+    final_model.fit(X_train, y_train)
+
+    y_prob_test = final_model.predict_proba(X_test)[:, 1]
+    y_pred_test = (y_prob_test >= 0.5).astype(int)
+
+    test_metrics = {
+        'acc':   accuracy_score(y_test, y_pred_test),
+        'auc':   roc_auc_score(y_test, y_prob_test),
+        'll':    log_loss(y_test, y_prob_test),
+        'brier': brier_score_loss(y_test, y_pred_test),
+    }
+
+    print(f"\\n  Test:    acc={test_metrics['acc']:.3f}  auc={test_metrics['auc']:.3f}  "
+          f"ll={test_metrics['ll']:.3f}  brier={test_metrics['brier']:.3f}")
+    print(f"  Lift:    +{test_metrics['acc'] - baseline_acc:.3f} vs always-red")
+
+    return {
+        'model': final_model,
+        'cv': cv_df,
+        'test': test_metrics,
+        'y_prob': y_prob_test,
+        'y_pred': y_pred_test,
+    }
+
+print("\\n✅ evaluate_cv() ready")
+"""))
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CELL 5 — XGBoost
+# ═══════════════════════════════════════════════════════════════════════════════
+nb.cells.append(md("## XGBoost (Default Hyperparameters)"))
+
+nb.cells.append(code("""
+xgb_params = {
+    'n_estimators': 500,
+    'max_depth': 5,
+    'learning_rate': 0.05,
+    'subsample': 0.8,
+    'colsample_bytree': 0.8,
+    'reg_alpha': 0.1,
+    'reg_lambda': 1.0,
+    'eval_metric': 'logloss',
+    'random_state': 42,
+    'n_jobs': -1,
+    'verbosity': 0,
+}
+
+xgb_results = evaluate_cv(XGBClassifier, xgb_params, "XGBoost")
+"""))
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CELL 6 — LightGBM
+# ═══════════════════════════════════════════════════════════════════════════════
+nb.cells.append(md("## LightGBM (Default Hyperparameters)"))
+
+nb.cells.append(code("""
+lgb_params = {
+    'n_estimators': 500,
+    'max_depth': 5,
+    'learning_rate': 0.05,
+    'subsample': 0.8,
+    'colsample_bytree': 0.8,
+    'reg_alpha': 0.1,
+    'reg_lambda': 1.0,
+    'num_leaves': 31,
+    'min_child_samples': 20,
+    'metric': 'binary_logloss',
+    'random_state': 42,
+    'n_jobs': -1,
+    'verbose': -1,
+}
+
+lgb_results = evaluate_cv(LGBMClassifier, lgb_params, "LightGBM")
+"""))
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CELL 7 — CatBoost
+# ═══════════════════════════════════════════════════════════════════════════════
+nb.cells.append(md("## CatBoost (Default Hyperparameters)"))
+
+nb.cells.append(code("""
+cat_params = {
+    'iterations': 500,
+    'depth': 5,
+    'learning_rate': 0.05,
+    'subsample': 0.8,
+    'l2_leaf_reg': 3.0,
+    'eval_metric': 'Logloss',
+    'random_seed': 42,
+    'verbose': 0,
+}
+
+cat_results = evaluate_cv(CatBoostClassifier, cat_params, "CatBoost")
+"""))
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CELL 8 — Model comparison
+# ═══════════════════════════════════════════════════════════════════════════════
+nb.cells.append(md("## Model Comparison"))
+
+nb.cells.append(code("""
+all_results = {
+    'XGBoost': xgb_results,
+    'LightGBM': lgb_results,
+    'CatBoost': cat_results,
+}
+
+# ── Comparison table ──
+print("=" * 80)
+print(f"MODEL COMPARISON — Test Set ({len(y_test)} fights, baseline acc={baseline_acc:.3f})")
+print("=" * 80)
+print(f"{'Model':<12} {'CV Acc':>8} {'Test Acc':>9} {'Lift':>8} {'AUC':>8} {'LogLoss':>9} {'Brier':>8}")
+print("─" * 80)
+print(f"{'Baseline':<12} {'—':>8} {baseline_acc:>9.3f} {'—':>8} {'0.500':>8} {baseline_ll:>9.3f} {'—':>8}")
+
+for name, res in all_results.items():
+    t = res['test']
+    cv_acc = res['cv']['acc'].mean()
+    lift = t['acc'] - baseline_acc
+    print(f"{name:<12} {cv_acc:>8.3f} {t['acc']:>9.3f} {lift:>+8.3f} {t['auc']:>8.3f} {t['ll']:>9.3f} {t['brier']:>8.3f}")
+
+# ── CV progression (does more data help?) ──
+print("\\n" + "─" * 60)
+print("CV Fold Accuracy Progression (does more training data help?)")
+print("─" * 60)
+for name, res in all_results.items():
+    fold_accs = res['cv']['acc'].values
+    trend = "↑" if fold_accs[-1] > fold_accs[0] else "↓"
+    print(f"  {name:<12} {' → '.join(f'{a:.3f}' for a in fold_accs)}  {trend}")
+"""))
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CELL 9 — Ensemble
+# ═══════════════════════════════════════════════════════════════════════════════
+nb.cells.append(md("""
+## Ensemble (Average)
+
+Simple probability averaging across all three models.
+"""))
+
+nb.cells.append(code("""
+ens_prob = np.mean([res['y_prob'] for res in all_results.values()], axis=0)
+ens_pred = (ens_prob >= 0.5).astype(int)
+
+ens_metrics = {
+    'acc':   accuracy_score(y_test, ens_pred),
+    'auc':   roc_auc_score(y_test, ens_prob),
+    'll':    log_loss(y_test, ens_prob),
+    'brier': brier_score_loss(y_test, ens_prob),
+}
+
+print(f"Ensemble Test: acc={ens_metrics['acc']:.3f}  auc={ens_metrics['auc']:.3f}  "
+      f"ll={ens_metrics['ll']:.3f}  brier={ens_metrics['brier']:.3f}")
+print(f"Lift vs baseline: +{ens_metrics['acc'] - baseline_acc:.3f}")
+
+# Store for later
+all_results['Ensemble'] = {
+    'test': ens_metrics,
+    'y_prob': ens_prob,
+    'y_pred': ens_pred,
+}
+
+# ── Agreement analysis ──
+agree_df = pd.DataFrame({
+    'xgb': all_results['XGBoost']['y_pred'],
+    'lgb': all_results['LightGBM']['y_pred'],
+    'cat': all_results['CatBoost']['y_pred'],
+    'y_true': y_test.values,
+})
+agree_df['vote_sum'] = agree_df[['xgb', 'lgb', 'cat']].sum(axis=1)
+agree_df['unanimous'] = agree_df['vote_sum'].isin([0, 3])
+agree_df['ens_pred'] = ens_pred
+agree_df['correct'] = (agree_df['ens_pred'] == agree_df['y_true']).astype(int)
+
+unan = agree_df[agree_df['unanimous']]
+split = agree_df[~agree_df['unanimous']]
+
+print(f"\\nAgreement Analysis:")
+print(f"  Unanimous (3-0): {len(unan)} fights ({len(unan)/len(agree_df)*100:.1f}%) → "
+      f"acc={unan['correct'].mean():.3f}")
+print(f"  Split (2-1):     {len(split)} fights ({len(split)/len(agree_df)*100:.1f}%) → "
+      f"acc={split['correct'].mean():.3f}")
+
+# Updated comparison table
+print(f"\\n{'='*80}")
+print(f"FINAL COMPARISON (including ensemble)")
+print(f"{'='*80}")
+print(f"{'Model':<12} {'Test Acc':>9} {'Lift':>8} {'AUC':>8} {'LogLoss':>9} {'Brier':>8}")
+print("─" * 80)
+print(f"{'Baseline':<12} {baseline_acc:>9.3f} {'—':>8} {'0.500':>8} {baseline_ll:>9.3f} {'—':>8}")
+for name in ['XGBoost', 'LightGBM', 'CatBoost', 'Ensemble']:
+    t = all_results[name]['test']
+    lift = t['acc'] - baseline_acc
+    print(f"{name:<12} {t['acc']:>9.3f} {lift:>+8.3f} {t['auc']:>8.3f} {t['ll']:>9.3f} {t['brier']:>8.3f}")
+"""))
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CELL 10 — Feature importance
+# ═══════════════════════════════════════════════════════════════════════════════
+nb.cells.append(md("## Feature Importance"))
+
+nb.cells.append(code("""
+fig, axes = plt.subplots(1, 3, figsize=(22, 8))
+
+importance_data = {}
+
+for idx, (name, mtype) in enumerate([('XGBoost', 'xgb'), ('LightGBM', 'lgb'), ('CatBoost', 'cat')]):
+    model = all_results[name]['model']
+    imp = model.feature_importances_
+
+    imp_df = pd.DataFrame({'feature': feature_cols, 'importance': imp})
+    imp_df = imp_df.sort_values('importance', ascending=False)
+    importance_data[name] = imp_df
+
+    top20 = imp_df.head(20)
+    ax = axes[idx]
+    ax.barh(range(20), top20['importance'].values[::-1])
+    ax.set_yticks(range(20))
+    ax.set_yticklabels(top20['feature'].values[::-1], fontsize=7)
+    ax.set_title(f'{name} — Top 20')
     ax.set_xlabel('Importance')
 
-from matplotlib.patches import Patch
-legend_elements = [
-    Patch(color='#e74c3c', label='Profile'),
-    Patch(color='#3498db', label='Recent Form (L3/L5)'),
-    Patch(color='#2ecc71', label='Career Rolling'),
-    Patch(color='#f39c12', label='Physical'),
-    Patch(color='#9b59b6', label='Activity/Streak'),
-    Patch(color='#95a5a6', label='Other/Categorical'),
-]
-fig.legend(handles=legend_elements, loc='lower center', ncol=6, fontsize=11,
-           bbox_to_anchor=(0.5, -0.02))
-plt.tight_layout(rect=[0, 0.05, 1, 1])
-plt.savefig(f'{DATA}feature_importance_comparison.png', dpi=150, bbox_inches='tight')
+plt.tight_layout()
+plt.savefig(DATA / 'feature_importance_comparison.png', dpi=150, bbox_inches='tight')
 plt.show()
 
 # ── Consensus ranking ──
-print("\\n" + "="*60)
-print("CONSENSUS TOP 15 (average rank across 3 models)")
-print("="*60)
-ranks = pd.DataFrame()
-for name, model in model_objs:
-    imp = model.get_feature_importance() if name == 'CatBoost' else model.feature_importances_
-    ranks[name] = pd.Series(imp, index=all_features).rank(ascending=False)
-ranks['avg_rank'] = ranks.mean(axis=1)
-consensus = ranks.sort_values('avg_rank').head(15)
-consensus['group'] = [
-    'PROFILE' if 'profile' in f else
-    'RECENT' if ('last3' in f or 'last5' in f) else
-    'CAREER' if 'career' in f else
-    'PHYSICAL' if any(k in f for k in ['age','height','reach','ape','weight']) else
-    'ACTIVITY' if any(k in f for k in ['streak','days','fights_per']) else
-    'OTHER'
-    for f in consensus.index
+rank_df = pd.DataFrame({'feature': feature_cols})
+for name, imp_df in importance_data.items():
+    merged = imp_df.copy()
+    merged['rank'] = merged['importance'].rank(ascending=False)
+    rank_df = rank_df.merge(merged[['feature', 'rank']], on='feature', suffixes=('', f'_{name}'))
+    rank_df = rank_df.rename(columns={'rank': f'rank_{name}'})
+
+rank_cols = [c for c in rank_df.columns if c.startswith('rank_')]
+rank_df['avg_rank'] = rank_df[rank_cols].mean(axis=1)
+rank_df = rank_df.sort_values('avg_rank')
+
+print("Consensus Top 15 (average rank across 3 models):")
+print("─" * 50)
+for i, (_, row) in enumerate(rank_df.head(15).iterrows()):
+    feat = row['feature']
+    ranks = [f"{row[c]:.0f}" for c in rank_cols]
+    ftype = ('PROFILE' if 'profile' in feat else
+             'PHYSICAL' if any(x in feat for x in ['age', 'height', 'reach', 'ape', 'weight_lbs']) else
+             'CAREER' if 'career' in feat else
+             'LAST-3' if 'last3' in feat else
+             'LAST-5' if 'last5' in feat else
+             'ACTIVITY' if any(x in feat for x in ['streak', 'days_since', 'fights_per']) else
+             'OTHER')
+    print(f"  {i+1:>2}. {feat:<45s} [{'/'.join(ranks)}]  {ftype}")
+"""))
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CELL 11 — Ablation study
+# ═══════════════════════════════════════════════════════════════════════════════
+nb.cells.append(md("""
+## Ablation Study
+
+Which feature groups drive performance? Test LightGBM with different subsets
+to understand the contribution of profile features, rolling features, and differentials.
+"""))
+
+nb.cells.append(code("""
+def quick_eval(features, label):
+    \"\"\"Train LightGBM on feature subset, return test metrics.\"\"\"
+    if len(features) == 0:
+        return {'label': label, 'n_feats': 0, 'acc': baseline_acc, 'auc': 0.5, 'll': baseline_ll}
+
+    model = LGBMClassifier(**lgb_params)
+    model.fit(X_train[features], y_train)
+    y_prob = model.predict_proba(X_test[features])[:, 1]
+    y_pred = (y_prob >= 0.5).astype(int)
+
+    return {
+        'label': label,
+        'n_feats': len(features),
+        'acc': accuracy_score(y_test, y_pred),
+        'auc': roc_auc_score(y_test, y_prob),
+        'll': log_loss(y_test, y_prob),
+    }
+
+# Define feature subsets
+all_feats     = feature_cols
+diff_feats    = [c for c in feature_cols if c.startswith('diff_')]
+profile_feats = [c for c in feature_cols if 'profile' in c]
+no_profile    = [c for c in feature_cols if 'profile' not in c]
+diff_no_prof  = [c for c in diff_feats if 'profile' not in c]
+diff_prof     = [c for c in diff_feats if 'profile' in c]
+
+career_feats  = [c for c in feature_cols if 'career' in c and 'profile' not in c]
+recent_feats  = [c for c in feature_cols if any(x in c for x in ['last3', 'last5'])]
+physical_feats = [c for c in feature_cols if any(x in c for x in ['age', 'height', 'reach', 'ape', 'weight_lbs',
+                                                                     'streak', 'days_since', 'fights_per',
+                                                                     'weight_class', 'stance'])]
+
+ablation_sets = [
+    (all_feats,      "All features"),
+    (no_profile,     "All − profile"),
+    (diff_feats,     "Diffs only"),
+    (diff_no_prof,   "Diffs − profile"),
+    (profile_feats,  "Profile only"),
+    (diff_prof,      "Profile diffs only"),
+    (career_feats,   "Career rolling only"),
+    (recent_feats,   "Recent form only (L3+L5)"),
+    (physical_feats, "Physical + activity + categoricals"),
 ]
-print(consensus[['avg_rank', 'group', 'XGBoost', 'LightGBM', 'CatBoost']].to_string())
-""")
 
-# ── Cell 9 ── Ensemble ───────────────────────────────────────────────
-md("""## Ensemble
-Simple average of all three models' predicted probabilities.  
-Also check: when all 3 agree, how accurate are they?""")
+ablation_results = [quick_eval(feats, label) for feats, label in ablation_sets]
+abl_df = pd.DataFrame(ablation_results)
 
-code("""
-print("="*60)
-print("ENSEMBLE")
-print("="*60)
+print("ABLATION STUDY (LightGBM, default params)")
+print("=" * 85)
+print(f"{'Feature Set':<38} {'#Feats':>7} {'Acc':>7} {'AUC':>7} {'LL':>7} {'Lift':>7}")
+print("─" * 85)
+for _, row in abl_df.iterrows():
+    lift = row['acc'] - baseline_acc
+    print(f"{row['label']:<38} {row['n_feats']:>7} {row['acc']:>7.3f} {row['auc']:>7.3f} "
+          f"{row['ll']:>7.3f} {lift:>+7.3f}")
 
-# ── Simple average ──
-ens_probs = (xgb_probs + lgb_probs + cat_probs) / 3
-ens_preds = (ens_probs >= 0.5).astype(int)
+# Key takeaways
+all_acc = abl_df.loc[abl_df['label'] == 'All features', 'acc'].values[0]
+no_prof_acc = abl_df.loc[abl_df['label'] == 'All − profile', 'acc'].values[0]
+prof_only_acc = abl_df.loc[abl_df['label'] == 'Profile only', 'acc'].values[0]
+diff_acc = abl_df.loc[abl_df['label'] == 'Diffs only', 'acc'].values[0]
 
-ens_acc   = accuracy_score(y_test, ens_preds)
-ens_auc   = roc_auc_score(y_test, ens_probs)
-ens_ll    = log_loss(y_test, ens_probs)
-ens_brier = brier_score_loss(y_test, ens_probs)
+print(f"\\nKey findings:")
+print(f"  Profile impact:    {all_acc - no_prof_acc:+.3f} (All − No profile)")
+print(f"  Profile alone:     {prof_only_acc:.3f} ({prof_only_acc - baseline_acc:+.3f} vs baseline)")
+print(f"  Diffs compression: {diff_acc:.3f} with {len(diff_feats)} feats vs {all_acc:.3f} with {len(all_feats)} feats")
+print(f"  Rolling alone:     {abl_df.loc[abl_df['label'] == 'Career rolling only', 'acc'].values[0]:.3f}")
+"""))
 
-print(f"Ensemble Accuracy:  {ens_acc:.3f}  (baseline: {baseline_acc:.3f}, lift: {ens_acc - baseline_acc:+.3f})")
-print(f"Ensemble AUC:       {ens_auc:.3f}")
-print(f"Ensemble Log Loss:  {ens_ll:.3f}")
-print(f"Ensemble Brier:     {ens_brier:.3f}")
+# ═══════════════════════════════════════════════════════════════════════════════
+# CELL 12 — Calibration
+# ═══════════════════════════════════════════════════════════════════════════════
+nb.cells.append(md("## Calibration Analysis"))
 
-# ── vs individual models ──
-print(f"\\n{'Model':<12} {'Accuracy':>9} {'LogLoss':>9}")
-print("─" * 32)
-for name, (preds, probs, _) in models.items():
-    print(f"{name:<12} {accuracy_score(y_test, preds):>9.3f} {log_loss(y_test, probs):>9.3f}")
-print(f"{'Ensemble':<12} {ens_acc:>9.3f} {ens_ll:>9.3f}")
+nb.cells.append(code("""
+fig, axes = plt.subplots(1, 2, figsize=(16, 6))
 
-# ── Agreement analysis ──
-print(f"\\nModel agreement:")
-agree_all = ((xgb_preds == lgb_preds) & (lgb_preds == cat_preds))
-print(f"  XGB-LGB agree: {(xgb_preds == lgb_preds).mean():.1%}")
-print(f"  XGB-CAT agree: {(xgb_preds == cat_preds).mean():.1%}")
-print(f"  LGB-CAT agree: {(lgb_preds == cat_preds).mean():.1%}")
-print(f"  All 3 agree:   {agree_all.mean():.1%} ({agree_all.sum()}/{len(y_test)} fights)")
+# ── Calibration curves ──
+ax = axes[0]
+ax.plot([0, 1], [0, 1], 'k--', lw=1, label='Perfect calibration')
 
-if agree_all.sum() > 0:
-    unan_acc = accuracy_score(y_test[agree_all], xgb_preds[agree_all])
-    print(f"  Unanimous accuracy: {unan_acc:.3f}")
+for name in ['XGBoost', 'LightGBM', 'CatBoost', 'Ensemble']:
+    prob = all_results[name]['y_prob']
+    brier = all_results[name]['test']['brier']
+    prob_true, prob_pred = calibration_curve(y_test, prob, n_bins=10, strategy='uniform')
+    ax.plot(prob_pred, prob_true, 's-', label=f"{name} (Brier={brier:.3f})", markersize=5)
 
-# ── Disagreement fights ──
-disagree = ~agree_all
-if disagree.sum() > 0:
-    dis_acc = accuracy_score(y_test[disagree], ens_preds[disagree])
-    print(f"  Disagreement fights ({disagree.sum()}): ensemble acc = {dis_acc:.3f}")
-""")
+ax.set_xlabel('Mean Predicted Probability')
+ax.set_ylabel('Fraction of Positives')
+ax.set_title('Calibration Curves')
+ax.legend(fontsize=8)
+ax.grid(True, alpha=0.3)
 
-# ── Cell 10 ── Calibration ───────────────────────────────────────────
-md("""## Calibration
-How well do predicted probabilities match actual outcomes?  
-Well-calibrated probabilities are essential for betting applications.""")
+# ── Confidence tier accuracy ──
+ax = axes[1]
 
-code("""
-fig, axes = plt.subplots(1, 4, figsize=(22, 5))
+buckets = [
+    (0.0,  0.20, 'Very conf\\nblue'),
+    (0.20, 0.35, 'Conf\\nblue'),
+    (0.35, 0.50, 'Lean\\nblue'),
+    (0.50, 0.65, 'Lean\\nred'),
+    (0.65, 0.80, 'Conf\\nred'),
+    (0.80, 1.01, 'Very conf\\nred'),
+]
 
-all_models = list(models.items()) + [('Ensemble', (ens_preds, ens_probs, None))]
+labels, accs, counts = [], [], []
+for lo, hi, label in buckets:
+    mask = (ens_prob >= lo) & (ens_prob < hi)
+    n = mask.sum()
+    if n > 0:
+        if lo < 0.5:
+            acc = 1 - y_test[mask].mean()  # blue predicted, so accuracy = blue win rate
+        else:
+            acc = y_test[mask].mean()  # red predicted, so accuracy = red win rate
+        labels.append(f"{label}\\n(n={n})")
+        accs.append(acc)
+        counts.append(n)
 
-for ax, (name, (_, probs, _)) in zip(axes, all_models):
-    fraction_pos, mean_predicted = calibration_curve(y_test, probs, n_bins=10, strategy='uniform')
-    ax.plot([0, 1], [0, 1], 'k--', alpha=0.5, label='Perfect')
-    ax.plot(mean_predicted, fraction_pos, 'o-', markersize=6, label=name)
-    ax.fill_between(mean_predicted, fraction_pos, [mp for mp in mean_predicted],
-                    alpha=0.15)
-    ax.set_xlabel('Mean Predicted Probability')
-    ax.set_ylabel('Fraction Positive')
-    ax.set_title(f'{name} Calibration')
-    ax.legend(loc='upper left')
-    ax.set_xlim(0, 1); ax.set_ylim(0, 1)
-    ax.set_aspect('equal')
+colors = ['#e74c3c' if a < 0.55 else '#f39c12' if a < 0.65 else '#27ae60' if a < 0.75 else '#2ecc71'
+          for a in accs]
+bars = ax.bar(labels, accs, color=colors, edgecolor='black', alpha=0.85)
+ax.axhline(0.5, color='gray', ls='--', alpha=0.5)
+ax.set_ylabel('Accuracy (picking predicted winner)')
+ax.set_title('Ensemble — Accuracy by Confidence Tier')
+ax.set_ylim(0, 1.0)
+for i, (a, n) in enumerate(zip(accs, counts)):
+    ax.text(i, a + 0.02, f"{a:.0%}", ha='center', fontsize=9, fontweight='bold')
 
 plt.tight_layout()
-plt.savefig(f'{DATA}calibration_curves.png', dpi=150, bbox_inches='tight')
+plt.savefig(DATA / 'calibration_curves.png', dpi=150, bbox_inches='tight')
 plt.show()
+"""))
 
-# ── Confidence bucket analysis ──
-print("\\n" + "="*60)
-print("CONFIDENCE BUCKET ANALYSIS (Ensemble)")
-print("="*60)
+# ═══════════════════════════════════════════════════════════════════════════════
+# CELL 13 — Error analysis
+# ═══════════════════════════════════════════════════════════════════════════════
+nb.cells.append(md("""
+## Error Analysis
 
-bucket_df = pd.DataFrame({
-    'prob': ens_probs,
-    'pred': ens_preds,
-    'actual': y_test.values,
-    'correct': (ens_preds == y_test.values).astype(int),
-    'confidence': np.abs(ens_probs - 0.5),
-})
+Where does the model fail? Examine confident wrong predictions, accuracy by
+weight class, finish type, and over time.
+"""))
 
-bins = [0, 0.03, 0.07, 0.12, 0.18, 0.25, 0.50]
-labels = ['50-53%', '53-57%', '57-62%', '62-68%', '68-75%', '75%+']
-bucket_df['bucket'] = pd.cut(bucket_df['confidence'], bins=bins, labels=labels)
-
-bucket_stats = bucket_df.groupby('bucket', observed=True).agg(
-    fights=('actual', 'count'),
-    accuracy=('correct', 'mean'),
-    avg_prob=('prob', lambda x: np.abs(x - 0.5).mean() + 0.5),
-).round(3)
-bucket_stats['pct_of_fights'] = (bucket_stats['fights'] / len(y_test) * 100).round(1)
-print(bucket_stats.to_string())
-print(f"\\nKey insight: Fights where model is >62% confident should show >60% accuracy")
-print(f"if the model has genuine predictive power beyond the baseline.")
-""")
-
-# ── Cell 11 ── Ablation Study ────────────────────────────────────────
-md("""## Ablation Study
-Test whether profile features (potential leakage) are inflating performance.  
-If "No Profile" matches "All Features", the model isn't relying on leaky data.""")
-
-code("""
-print("="*60)
-print("ABLATION STUDY")
-print("="*60)
-
-feature_sets = {
-    'All features': all_features,
-    'No profile': [f for f in all_features if 'profile' not in f],
-    'Diffs only': diff_features,
-    'Diffs no profile': [f for f in diff_features if 'profile' not in f],
-    'Profile only': [f for f in all_features if 'profile' in f] + 
-                    ['weight_class_ord', 'f1_stance_enc', 'f2_stance_enc',
-                     'ortho_vs_south', 'has_switch'],
-    'Physical + activity only': [f for f in all_features if any(k in f for k in
-                    ['height','reach','age','ape','weight','streak','days','fights_per',
-                     'weight_class_ord','stance_enc','ortho','switch'])],
-}
-
-# Clean feature sets — only keep columns that exist
-for k in feature_sets:
-    feature_sets[k] = [f for f in feature_sets[k] if f in df.columns]
-
-ablation = {}
-for set_name, features in feature_sets.items():
-    model = lgb.LGBMClassifier(
-        n_estimators=500, max_depth=5, learning_rate=0.05,
-        subsample=0.8, colsample_bytree=0.7,
-        reg_alpha=1.0, reg_lambda=1.0,
-        random_state=42, n_jobs=-1, verbosity=-1,
-    )
-    model.fit(train[features], y_train)
-    probs = model.predict_proba(test[features])[:, 1]
-    preds = (probs >= 0.5).astype(int)
-
-    acc = accuracy_score(y_test, preds)
-    auc = roc_auc_score(y_test, probs)
-    ll  = log_loss(y_test, probs)
-    ablation[set_name] = {'n_feat': len(features), 'acc': acc, 'auc': auc, 'logloss': ll}
-    print(f"  {set_name:<25s} ({len(features):>3d} feat)  acc={acc:.3f}  AUC={auc:.3f}  ll={ll:.3f}")
-
-print(f"\\n  Baseline: acc={baseline_acc:.3f}")
-abl_df = pd.DataFrame(ablation).T
-abl_df['lift_vs_base'] = abl_df['acc'] - baseline_acc
-print(f"\\n{abl_df.to_string()}")
-
-profile_impact = ablation['All features']['acc'] - ablation['No profile']['acc']
-print(f"\\nProfile impact: {profile_impact:+.3f}")
-if abs(profile_impact) < 0.01:
-    print("→ Profile features contribute <1% — model is NOT relying on leaky data ✅")
-elif profile_impact > 0.02:
-    print("→ Profile features add >2% — potential leakage concern ⚠️")
-    print("  Consider using profile features only as cold-start fallback")
-else:
-    print("→ Profile features contribute 1-2% — marginal, likely safe")
-""")
-
-# ── Cell 12 ── Error Analysis ────────────────────────────────────────
-md("""## Error Analysis
-Where does the model fail? Confident wrong predictions, accuracy by weight class,
-by finish type, and over time.""")
-
-code("""
-print("="*60)
-print("ERROR ANALYSIS")
-print("="*60)
-
-# Use ensemble for analysis
-err = test.copy()
-err['ens_prob'] = ens_probs
-err['ens_pred'] = ens_preds
-err['correct'] = (err['ens_pred'] == err['f1_win']).astype(int)
-err['confidence'] = np.abs(err['ens_prob'] - 0.5)
+nb.cells.append(code("""
+test_df = df.loc[test_mask].copy()
+test_df['ens_prob'] = ens_prob
+test_df['ens_pred'] = ens_pred
+test_df['correct'] = (test_df['ens_pred'] == test_df['f1_win']).astype(int)
+test_df['confidence'] = (test_df['ens_prob'] - 0.5).abs()
 
 # ── Confident wrong predictions ──
-conf_wrong = err[(err.correct == 0) & (err.confidence > 0.15)].sort_values('confidence', ascending=False)
-print(f"\\nConfident wrong predictions (>65% confidence): {len(conf_wrong)}")
-if len(conf_wrong) > 0:
-    cols = ['event_date', 'fighter_1', 'fighter_2', 'ens_prob', 'f1_win', 'weight_class', 'finish_type']
-    available_cols = [c for c in cols if c in conf_wrong.columns]
-    print(conf_wrong[available_cols].head(15).to_string(index=False))
+print("CONFIDENT WRONG PREDICTIONS (>80% confidence)")
+print("=" * 90)
+
+conf_wrong = test_df[
+    (test_df['correct'] == 0) &
+    ((test_df['ens_prob'] > 0.80) | (test_df['ens_prob'] < 0.20))
+].sort_values('confidence', ascending=False)
+
+print(f"Total: {len(conf_wrong)} fights")
+for _, row in conf_wrong.head(15).iterrows():
+    prob = row['ens_prob']
+    favored = row['fighter_1'] if prob >= 0.5 else row['fighter_2']
+    actual  = row['fighter_1'] if row['f1_win'] == 1 else row['fighter_2']
+    conf = max(prob, 1 - prob)
+    print(f"  {row['event_date'].strftime('%Y-%m-%d')} | {row['fighter_1']} vs {row['fighter_2']:<25s} | "
+          f"Pick: {favored:<25s} ({conf:.0%}) | Won: {actual}")
 
 # ── By weight class ──
-print(f"\\n--- Accuracy by Weight Class ---")
-wc = err.groupby('weight_class').agg(
-    fights=('correct', 'count'),
-    accuracy=('correct', 'mean'),
-    baseline=('f1_win', 'mean'),
-).round(3)
-wc['lift'] = (wc['accuracy'] - wc['baseline']).round(3)
-print(wc.sort_values('fights', ascending=False).to_string())
+print(f"\\n{'='*70}")
+print("ACCURACY BY WEIGHT CLASS")
+print(f"{'='*70}")
+wc = test_df.groupby('weight_class').agg(
+    n=('correct', 'count'),
+    acc=('correct', 'mean'),
+    base=('f1_win', 'mean'),
+).sort_values('acc', ascending=False)
+wc['lift'] = wc['acc'] - wc['base']
+
+for wc_name, row in wc.iterrows():
+    bar = '█' * int(row['acc'] * 30)
+    print(f"  {wc_name:<28s} n={row['n']:>3.0f}  acc={row['acc']:.3f}  base={row['base']:.3f}  "
+          f"lift={row['lift']:+.3f}  {bar}")
 
 # ── By finish type ──
-print(f"\\n--- Accuracy by Finish Type ---")
-ft = err.groupby('finish_type').agg(
-    fights=('correct', 'count'),
-    accuracy=('correct', 'mean'),
-).round(3)
-print(ft.sort_values('fights', ascending=False).to_string())
+print(f"\\n{'='*70}")
+print("ACCURACY BY FINISH TYPE")
+print(f"{'='*70}")
+ft = test_df.groupby('finish_type').agg(
+    n=('correct', 'count'),
+    acc=('correct', 'mean'),
+).sort_values('n', ascending=False)
+
+for ft_name, row in ft.iterrows():
+    print(f"  {ft_name:<12s} n={row['n']:>3.0f}  acc={row['acc']:.3f}")
 
 # ── Over time ──
-print(f"\\n--- Accuracy by Quarter ---")
-err['quarter'] = err['event_date'].dt.to_period('Q')
-qt = err.groupby('quarter').agg(
-    fights=('correct', 'count'),
-    accuracy=('correct', 'mean'),
-    baseline=('f1_win', 'mean'),
-).round(3)
-qt['lift'] = (qt['accuracy'] - qt['baseline']).round(3)
-print(qt.to_string())
-""")
+print(f"\\n{'='*70}")
+print("ACCURACY OVER TIME (monthly)")
+print(f"{'='*70}")
+test_df['month'] = test_df['event_date'].dt.to_period('M')
+monthly = test_df.groupby('month').agg(
+    n=('correct', 'count'),
+    acc=('correct', 'mean'),
+).reset_index()
 
-# ── Cell 13 ── Confusion Matrices ────────────────────────────────────
-md("""## Confusion Matrices""")
+for _, row in monthly.iterrows():
+    bar = '█' * int(row['acc'] * 30)
+    print(f"  {row['month']}  n={row['n']:>3.0f}  acc={row['acc']:.3f}  {bar}")
+"""))
 
-code("""
-fig, axes = plt.subplots(1, 4, figsize=(22, 5))
+# ═══════════════════════════════════════════════════════════════════════════════
+# CELL 14 — Confusion matrices
+# ═══════════════════════════════════════════════════════════════════════════════
+nb.cells.append(md("## Confusion Matrices"))
 
-all_preds = list(models.items()) + [('Ensemble', (ens_preds, ens_probs, None))]
+nb.cells.append(code("""
+fig, axes = plt.subplots(1, 4, figsize=(20, 4.5))
 
-for ax, (name, (preds, probs, _)) in zip(axes, all_preds):
-    cm = confusion_matrix(y_test, preds)
+for idx, name in enumerate(['XGBoost', 'LightGBM', 'CatBoost', 'Ensemble']):
+    y_pred_m = all_results[name]['y_pred']
+    cm = confusion_matrix(y_test, y_pred_m)
+
+    ax = axes[idx]
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax,
                 xticklabels=['Blue wins', 'Red wins'],
                 yticklabels=['Blue wins', 'Red wins'])
     ax.set_xlabel('Predicted')
     ax.set_ylabel('Actual')
-    acc = accuracy_score(y_test, preds)
-    ax.set_title(f'{name}\\nAcc={acc:.3f} (base={baseline_acc:.3f})')
+    acc = all_results[name]['test']['acc']
+    ax.set_title(f'{name} ({acc:.1%})')
 
 plt.tight_layout()
-plt.savefig(f'{DATA}confusion_matrices.png', dpi=150, bbox_inches='tight')
+plt.savefig(DATA / 'confusion_matrices.png', dpi=150, bbox_inches='tight')
 plt.show()
 
-# ── Classification reports ──
-print("\\nClassification Report — Ensemble:")
-print(classification_report(y_test, ens_preds,
-      target_names=['Blue wins (0)', 'Red wins (1)']))
-""")
+# Classification report for ensemble
+print("\\nEnsemble Classification Report:")
+print(classification_report(y_test, ens_pred, target_names=['Blue wins', 'Red wins']))
+"""))
 
-# ── Cell 14 ── Probability Distribution ──────────────────────────────
-md("""## Predicted Probability Distributions
-How confident is the model? A model that just predicts ~57% for everything
-isn't useful. We want a spread of probabilities.""")
+# ═══════════════════════════════════════════════════════════════════════════════
+# CELL 15 — Probability distributions
+# ═══════════════════════════════════════════════════════════════════════════════
+nb.cells.append(md("## Probability Distributions"))
 
-code("""
+nb.cells.append(code("""
 fig, axes = plt.subplots(1, 2, figsize=(16, 5))
 
-# ── Distribution of ensemble probabilities ──
+# ── Histogram by outcome ──
 ax = axes[0]
-ax.hist(ens_probs[y_test == 1], bins=30, alpha=0.6, label='Red actually won', color='#e74c3c', density=True)
-ax.hist(ens_probs[y_test == 0], bins=30, alpha=0.6, label='Blue actually won', color='#3498db', density=True)
-ax.axvline(0.5, color='black', linestyle='--', alpha=0.5)
-ax.set_xlabel('Predicted P(Red wins)')
+red_probs = ens_prob[y_test == 1]
+blue_probs = ens_prob[y_test == 0]
+
+ax.hist(red_probs, bins=30, alpha=0.6, color='red', label=f'Red wins (n={len(red_probs)})', density=True)
+ax.hist(blue_probs, bins=30, alpha=0.6, color='blue', label=f'Blue wins (n={len(blue_probs)})', density=True)
+ax.axvline(0.5, color='black', ls='--', lw=1)
+ax.set_xlabel('Ensemble P(red wins)')
 ax.set_ylabel('Density')
-ax.set_title('Ensemble — Probability Distribution by Outcome')
+ax.set_title('Probability Distribution by Actual Outcome')
 ax.legend()
 
-# ── Separation plot ──
+# ── Separation ──
 ax = axes[1]
-sorted_idx = np.argsort(ens_probs)
-colors = ['#e74c3c' if y_test.iloc[i] == 1 else '#3498db' for i in sorted_idx]
-ax.bar(range(len(ens_probs)), [1]*len(ens_probs), color=colors, width=1.0, alpha=0.7)
-ax.plot(range(len(ens_probs)), ens_probs[sorted_idx], color='black', linewidth=1.5, label='P(red)')
+sorted_idx = np.argsort(ens_prob)
+colors = ['red' if y_test.iloc[i] == 1 else 'blue' for i in sorted_idx]
+ax.bar(range(len(ens_prob)), ens_prob[sorted_idx], color=colors, width=1.0, alpha=0.6)
+ax.axhline(0.5, color='black', ls='--', lw=1)
 ax.set_xlabel('Fights (sorted by predicted probability)')
-ax.set_ylabel('Probability')
-ax.set_title('Separation Plot — Ensemble')
-ax.legend()
+ax.set_ylabel('P(red wins)')
+ax.set_title('Separation Plot')
 
 plt.tight_layout()
-plt.savefig(f'{DATA}probability_distributions.png', dpi=150, bbox_inches='tight')
+plt.savefig(DATA / 'probability_distributions.png', dpi=150, bbox_inches='tight')
 plt.show()
 
-# ── Summary stats ──
-print(f"Predicted probability stats:")
-print(f"  Mean:   {ens_probs.mean():.3f}")
-print(f"  Std:    {ens_probs.std():.3f}")
-print(f"  Min:    {ens_probs.min():.3f}")
-print(f"  Max:    {ens_probs.max():.3f}")
-print(f"  <40%:   {(ens_probs < 0.4).sum()} fights ({(ens_probs < 0.4).mean():.1%})")
-print(f"  40-60%: {((ens_probs >= 0.4) & (ens_probs <= 0.6)).sum()} fights ({((ens_probs >= 0.4) & (ens_probs <= 0.6)).mean():.1%})")
-print(f"  >60%:   {(ens_probs > 0.6).sum()} fights ({(ens_probs > 0.6).mean():.1%})")
-""")
+# Stats
+print(f"Probability distribution stats:")
+print(f"  Mean: {ens_prob.mean():.3f}  Std: {ens_prob.std():.3f}")
+print(f"  Min: {ens_prob.min():.3f}  Max: {ens_prob.max():.3f}")
+print(f"  <40%: {(ens_prob < 0.4).mean():.1%}  |  40-60%: {((ens_prob >= 0.4) & (ens_prob < 0.6)).mean():.1%}  |  >60%: {(ens_prob >= 0.6).mean():.1%}")
+"""))
 
-# ── Cell 15 ── Save Models & Final Summary ───────────────────────────
-md("""## Save Models & Final Summary""")
+# ═══════════════════════════════════════════════════════════════════════════════
+# CELL 16 — Save
+# ═══════════════════════════════════════════════════════════════════════════════
+nb.cells.append(md("## Save Models, Predictions & Summary"))
 
-code("""
-# ── Save models ──
-MODELS_DIR = '../models/' if os.path.exists('../models/') else './models/'
-os.makedirs(MODELS_DIR, exist_ok=True)
+nb.cells.append(code("""
+# ── Save models (native formats) ──
+all_results['XGBoost']['model'].save_model(str(MODEL_DIR / 'xgb_baseline.json'))
+all_results['LightGBM']['model'].save_model(str(MODEL_DIR / 'lgb_baseline.txt'))
+all_results['CatBoost']['model'].save_model(str(MODEL_DIR / 'cat_baseline.cbm'))
 
-xgb_model.save_model(f'{MODELS_DIR}xgb_model.json')
-lgb_model.booster_.save_model(f'{MODELS_DIR}lgb_model.txt')
-cat_model.save_model(f'{MODELS_DIR}catboost_model.cbm')
-print(f"Models saved to {MODELS_DIR}")
-
-# ── Save test predictions ──
-test_out = test[['event_date', 'fighter_1', 'fighter_2', 'f1_win', 'weight_class']].copy()
-test_out['xgb_prob'] = xgb_probs
-test_out['lgb_prob'] = lgb_probs
-test_out['cat_prob'] = cat_probs
-test_out['ens_prob'] = ens_probs
-test_out['ens_pred'] = ens_preds
-test_out['correct']  = (ens_preds == y_test.values).astype(int)
-test_out.to_csv(f'{DATA}test_predictions.csv', index=False)
-print(f"Test predictions saved to {DATA}test_predictions.csv")
+# ── Save predictions ──
+pred_df = df.loc[test_mask, ['event_name', 'event_date', 'fighter_1', 'fighter_2',
+                              'weight_class', 'f1_win', 'finish_type']].copy()
+pred_df['xgb_prob'] = all_results['XGBoost']['y_prob']
+pred_df['lgb_prob'] = all_results['LightGBM']['y_prob']
+pred_df['cat_prob'] = all_results['CatBoost']['y_prob']
+pred_df['ens_prob'] = ens_prob
+pred_df['ens_pred'] = ens_pred
+pred_df['correct']  = (ens_pred == y_test.values).astype(int)
+pred_df.to_csv(DATA / 'test_predictions.csv', index=False)
 
 # ── Save feature list ──
-with open(f'{DATA}feature_list.txt', 'w') as f:
-    for feat in all_features:
+with open(DATA / 'feature_list.txt', 'w') as f:
+    for feat in feature_cols:
         f.write(feat + '\\n')
-print(f"Feature list saved ({len(all_features)} features)")
 
-# ── FINAL SUMMARY ──
-print(f"\\n{'='*60}")
-print(f"FINAL SUMMARY")
-print(f"{'='*60}")
-print(f"Training period:     {train.event_date.min().date()} → {train.event_date.max().date()}")
-print(f"Test period:         {test.event_date.min().date()} → {test.event_date.max().date()}")
-print(f"Training fights:     {len(train)}")
-print(f"Test fights:         {len(test)}")
-print(f"Features:            {len(all_features)}")
-print(f"Baseline (always red): {baseline_acc:.3f}")
-print(f"")
-print(f"{'Model':<12} {'Test Acc':>9} {'Lift':>7} {'AUC':>6} {'LogLoss':>8}")
-print(f"{'─'*44}")
-for name, (preds, probs, _) in models.items():
-    acc = accuracy_score(y_test, preds)
-    print(f"{name:<12} {acc:>9.3f} {acc-baseline_acc:>+7.3f} "
-          f"{roc_auc_score(y_test, probs):>6.3f} {log_loss(y_test, probs):>8.3f}")
-print(f"{'Ensemble':<12} {ens_acc:>9.3f} {ens_acc-baseline_acc:>+7.3f} "
-      f"{ens_auc:>6.3f} {ens_ll:>8.3f}")
-print(f"")
-print(f"Profile leakage impact: {profile_impact:+.3f}")
-print(f"")
-print(f"Next steps:")
-print(f"  1. Hyperparameter tuning (Optuna) — notebook 06")
-print(f"  2. Stacked ensemble (use CV predictions as meta-features)")
-print(f"  3. Betting simulation (Kelly criterion / flat bet on confident picks)")
-print(f"  4. SHAP analysis for individual fight explanations")
-""")
-
-# ── Write notebook ───────────────────────────────────────────────────
-nb = {
-    "nbformat": 4,
-    "nbformat_minor": 5,
-    "metadata": {
-        "kernelspec": {
-            "display_name": "Python 3",
-            "language": "python",
-            "name": "python3"
-        },
-        "language_info": {"name": "python", "version": "3.10.12"}
-    },
-    "cells": cells,
+# ── Save default params for NB06 comparison ──
+default_params = {
+    'XGBoost': xgb_params,
+    'LightGBM': lgb_params,
+    'CatBoost': cat_params,
 }
+with open(DATA / 'default_params.json', 'w') as f:
+    json.dump(default_params, f, indent=2)
 
-out = pathlib.Path("notebooks/05_modeling.ipynb")
-out.parent.mkdir(exist_ok=True)
-out.write_text(json.dumps(nb, indent=1))
-print(f"Created {out}  ({len(cells)} cells)")
+# ── Save NB05 results for NB06 comparison ──
+nb05_results = {}
+for name in ['XGBoost', 'LightGBM', 'CatBoost', 'Ensemble']:
+    nb05_results[name] = all_results[name]['test']
+with open(DATA / 'nb05_results.json', 'w') as f:
+    json.dump(nb05_results, f, indent=2)
+
+print("Saved:")
+print(f"  Models:       {MODEL_DIR}/xgb_baseline.json, lgb_baseline.txt, cat_baseline.cbm")
+print(f"  Predictions:  {DATA}/test_predictions.csv ({len(pred_df)} rows)")
+print(f"  Features:     {DATA}/feature_list.txt ({len(feature_cols)} features)")
+print(f"  Default params: {DATA}/default_params.json")
+print(f"  NB05 results: {DATA}/nb05_results.json")
+
+# ── Final summary ──
+print("\\n" + "=" * 70)
+print("NOTEBOOK 05 — FINAL SUMMARY")
+print("=" * 70)
+print(f"Split: train < {SPLIT_DATE} ({len(X_train):,} fights) | test ≥ {SPLIT_DATE} ({len(X_test):,} fights)")
+print(f"Features: {len(feature_cols)}")
+print(f"Baseline (always red): {baseline_acc:.3f}")
+print()
+print(f"{'Model':<12} {'Test Acc':>9} {'Lift':>8} {'AUC':>8} {'LogLoss':>9} {'Brier':>8}")
+print("─" * 70)
+for name in ['XGBoost', 'LightGBM', 'CatBoost', 'Ensemble']:
+    t = all_results[name]['test']
+    lift = t['acc'] - baseline_acc
+    print(f"{name:<12} {t['acc']:>9.3f} {lift:>+8.3f} {t['auc']:>8.3f} {t['ll']:>9.3f} {t['brier']:>8.3f}")
+print()
+print("These are DEFAULT hyperparameter baselines.")
+print("NB06 will tune hyperparameters and compare against these numbers on the SAME test set.")
+print("=" * 70)
+"""))
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Write notebook
+# ═══════════════════════════════════════════════════════════════════════════════
+out_path = os.path.join("notebooks", "05_modeling.ipynb")
+os.makedirs("notebooks", exist_ok=True)
+with open(out_path, "w") as f:
+    nbf.write(nb, f)
+print(f"✅ Wrote {out_path} — {len(nb.cells)} cells")
