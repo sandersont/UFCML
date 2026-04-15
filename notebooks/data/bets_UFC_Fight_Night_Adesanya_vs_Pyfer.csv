@@ -1,0 +1,7 @@
+fighter_1,fighter_2,bet_on,american,decimal,model_prob,implied_fair,edge,tier,confidence,unanimous,kelly_frac,stake,to_win,coverage
+Israel Adesanya,Joe Pyfer,Joe Pyfer,114,2.14,0.5141,0.4455,0.0685,NO_CONF,0.5141,False,0.0601,6.01,6.85,full
+Maycee Barber,Alexa Grasso,Maycee Barber,-192,1.521,0.7713,0.6309,0.1404,HIGH,0.7713,True,0.2,20.0,10.42,full
+Michael Chiesa,Niko Price,Michael Chiesa,-850,1.118,0.6894,0.8579,-0.1686,HIGH,0.6894,True,0.0,0.0,0.0,full
+Lerryan Douglas,Julian Erosa,Lerryan Douglas,-340,1.294,0.628,0.7409,-0.1129,MEDIUM,0.628,True,0.0,0.0,0.0,full
+Mansur Abdul-Malik,Yousri Belgaroui,Yousri Belgaroui,124,2.24,0.5271,0.4279,0.0991,LOW,0.5271,True,0.0799,7.99,9.91,full
+Terrance McKinney,Kyle Nelson,Terrance McKinney,-185,1.541,0.7365,0.6225,0.1141,HIGH,0.7365,True,0.2,20.0,10.81,full

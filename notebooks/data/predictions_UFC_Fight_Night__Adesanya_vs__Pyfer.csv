@@ -1,0 +1,14 @@
+fighter_1,fighter_2,weight_class,winner,coverage,XGBoost_prob,LightGBM_prob,CatBoost_prob,Ensemble_prob,pick,confidence,unanimous,tier,correct
+Israel Adesanya,Joe Pyfer,Middleweight,Joe Pyfer,full,0.47794786,0.47598897422191977,0.44599922285883176,0.4665986804636548,Joe Pyfer,0.5334013195363452,True,LOW,True
+Alexa Grasso,Maycee Barber,Women's Flyweight,Alexa Grasso,full,0.2430004,0.33130632670888244,0.22861527080273536,0.26761390401838264,Maycee Barber,0.7323860959816173,True,HIGH,False
+Michael Chiesa,Niko Price,Welterweight,Michael Chiesa,full,0.62845075,0.704790449196313,0.7432370073883143,0.6920901790481728,Michael Chiesa,0.6920901790481728,True,HIGH,True
+Julian Erosa,Lerryan Douglas,Featherweight,Lerryan Douglas,profile_only,0.610597,0.5513240346472869,0.5614691522243311,0.5744059523405145,Julian Erosa,0.5744059523405145,True,MEDIUM,False
+Mansur Abdul-Malik,Yousri Belgaroui,Middleweight,Yousri Belgaroui,profile_only,0.46057656,0.46478092859088255,0.49342289039477966,0.472879501062692,Yousri Belgaroui,0.527120498937308,True,LOW,True
+Terrance McKinney,Kyle Nelson,Lightweight,Terrance McKinney,full,0.7364417,0.7384744704573625,0.7430279542224578,0.7392407682490097,Terrance McKinney,0.7392407682490097,True,HIGH,True
+Ignacio Bahamondes,Tofiq Musayev,Lightweight,Tofiq Musayev,profile_only,0.5101106,0.5493061339519061,0.4538672633672876,0.504377558362498,Ignacio Bahamondes,0.504377558362498,False,NO_CONF,False
+Chase Hooper,Lance Gibson Jr.,Lightweight,Lance Gibson Jr.,profile_only,0.7284271,0.763116025318951,0.744169609825225,0.7451630556353643,Chase Hooper,0.7451630556353643,True,HIGH,False
+Marcin Tybura,Tyrell Fortune,Heavyweight,Tyrell Fortune,profile_only,0.58956635,0.5906697748671993,0.5911027413667378,0.5903872416902283,Marcin Tybura,0.5903872416902283,True,MEDIUM,False
+Casey O'Neill,Gabriella Fernandes,Women's Flyweight,Casey O'Neill,full,0.78949517,0.7910903075944501,0.7881798950992737,0.7895094998126246,Casey O'Neill,0.7895094998126246,True,HIGH,True
+Navajo Stirling,Bruno Lopes,Light Heavyweight,Navajo Stirling,profile_only,0.87675613,0.8773179135385063,0.855881189649646,0.8698980887655694,Navajo Stirling,0.8698980887655694,True,VERY_HIGH,True
+Ricky Simon,Adrian Yanez,Bantamweight,,full,0.52473956,0.555811975029167,0.5773716900245098,0.5525858044538013,Ricky Simon,0.5525858044538013,True,MEDIUM,
+Alexia Thainara,Bruna Brasil,Women's Strawweight,Alexia Thainara,profile_only,0.9301964,0.9093841703866191,0.8813893028004256,0.9068992524821079,Alexia Thainara,0.9068992524821079,True,VERY_HIGH,True

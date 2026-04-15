@@ -1,0 +1,10 @@
+fighter_1,fighter_2,bet_on,american,decimal,model_prob,implied_fair,edge,tier,confidence,unanimous,kelly_frac,stake,to_win,coverage
+Khamzat Chimaev,Dricus Du Plessis,Khamzat Chimaev,-254,1.394,0.8516,0.6857,0.166,VERY_HIGH,0.8516,True,0.2,20.0,7.87,full
+Aaron Pico,Lerone Murphy,Lerone Murphy,128,2.28,0.6437,0.4179,0.2258,MEDIUM,0.6437,True,0.1764,17.64,22.58,full
+Carlos Prates,Geoff Neal,Carlos Prates,-200,1.5,0.7886,0.6341,0.1545,HIGH,0.7886,True,0.2,20.0,10.0,full
+Michael Page,Jared Cannonier,Michael Page,-215,1.465,0.913,0.6516,0.2615,VERY_HIGH,0.913,True,0.2,20.0,9.3,full
+Kai Asakura,Tim Elliott,Tim Elliott,254,3.54,0.5391,0.2695,0.2696,LOW,0.5391,True,0.1062,10.62,26.97,full
+Baysangur Susurkaev,Eric Nolan,Baysangur Susurkaev,-1017,1.098,0.9728,0.8706,0.1022,VERY_HIGH,0.9728,True,0.2,20.0,1.97,full
+Michal Oleksiejczuk,Gerald Meerschaert,Michal Oleksiejczuk,-218,1.459,0.7138,0.6534,0.0604,HIGH,0.7138,True,0.1317,13.17,6.04,full
+Loopy Godinez,Jessica Andrade,Loopy Godinez,-140,1.714,0.6327,0.5564,0.0763,MEDIUM,0.6327,True,0.1069,10.69,7.64,full
+Alexander Hernandez,Chase Hooper,Chase Hooper,286,3.86,0.5791,0.2473,0.3318,MEDIUM,0.5791,True,0.116,11.6,33.18,full
