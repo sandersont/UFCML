@@ -1,55 +1,83 @@
 ## Last Updated
-After completing notebooks 01–06 (scraping, cleaning, EDA, feature engineering, modeling, tuning).
-Notebook 06 still running Optuna tuning (50 trials per model).
+After completing notebooks 01–07 (scraping, cleaning, EDA, feature engineering, modeling, tuning, predictions).
+All notebooks complete and tested.
 
 ## Architecture
 
 /workspaces/UFCML/
-├── setup_project.py # Creates dirs, .gitignore, requirements.txt
-├── create_01_scraper.py # Generates notebooks/01_scraper.ipynb
-├── create_02_cleaning.py # Generates notebooks/02_data_cleaning.ipynb
-├── create_03_eda.py # Generates notebooks/03_eda.ipynb
-├── create_04_feature_engineering.py # Generates notebooks/04_feature_engineering.ipynb
-├── create_05_modeling.py # Generates notebooks/05_modeling.ipynb
-├── create_06_tuning.py # Generates notebooks/06_tuning.ipynb
+├── setup_project.py                    # Creates dirs, .gitignore, requirements.txt
+├── create_01_scraper.py                # Generates notebooks/01_scraper.ipynb
+├── create_02_cleaning.py               # Generates notebooks/02_data_cleaning.ipynb
+├── create_03_eda.py                    # Generates notebooks/03_eda.ipynb
+├── create_04_feature_engineering.py    # Generates notebooks/04_feature_engineering.ipynb
+├── create_05_modeling.py               # Generates notebooks/05_modeling.ipynb
+├── create_06_tuning.py                 # Generates notebooks/06_tuning.ipynb
+├── create_07_predict.py                # Generates notebooks/07_predict.ipynb
 ├── requirements.txt
 ├── .gitignore
-├── PROJECT_STATUS.md # This file
+├── PROJECT_STATUS.md                   # This file
 ├── notebooks/
-│ ├── 01_scraper.ipynb # 8 cells — scrapes all data
-│ ├── 02_data_cleaning.ipynb # 7 cells — cleans and parses
-│ ├── 03_eda.ipynb # 18 cells — exploratory analysis
-│ ├── 04_feature_engineering.ipynb # 15 cells — rolling features + diffs + feature EDA
-│ ├── 05_modeling.ipynb # 15 cells — baseline models + ablation
-│ ├── 06_tuning.ipynb # 13 cells — Optuna hyperparameter tuning
-│ └── data/ # All CSV/JSON files live here
-│ ├── events.csv
-│ ├── events_clean.csv
-│ ├── fights_raw.csv
-│ ├── fights.csv
-│ ├── fights_clean.csv
-│ ├── fighters.csv
-│ ├── fighters_full.csv
-│ ├── fighters_clean.csv
-│ ├── fight_details.json
-│ ├── fight_details_checkpoint.json
-│ ├── model_data.csv
-│ ├── test_predictions.csv
-│ ├── feature_list.txt
-│ ├── feature_importance_comparison.png
-│ ├── calibration_curves.png
-│ ├── confusion_matrices.png
-│ └── probability_distributions.png
-├── data/ # Empty (data lives in notebooks/data/)
+│   ├── 01_scraper.ipynb                # 8 cells — scrapes all data
+│   ├── 02_data_cleaning.ipynb          # 7 cells — cleans and parses
+│   ├── 03_eda.ipynb                    # 18 cells — exploratory analysis
+│   ├── 04_feature_engineering.ipynb    # 15 cells — rolling features + diffs + feature EDA
+│   ├── 05_modeling.ipynb               # 16 cells — baseline models + ablation
+│   ├── 06_tuning.ipynb                 # 18 cells — Optuna hyperparameter tuning
+│   ├── 07_predict.ipynb                # 11 cells — event predictions
+│   └── data/                           # All CSV/JSON files live here
+│       ├── events.csv
+│       ├── events_clean.csv
+│       ├── fights_raw.csv
+│       ├── fights.csv
+│       ├── fights_clean.csv
+│       ├── fighters.csv
+│       ├── fighters_full.csv
+│       ├── fighters_clean.csv
+│       ├── fight_details.json
+│       ├── fight_details_checkpoint.json
+│       ├── model_data.csv
+│       ├── test_predictions.csv
+│       ├── test_predictions_tuned.csv
+│       ├── feature_list.txt
+│       ├── default_params.json
+│       ├── nb05_results.json
+│       ├── best_params.json
+│       ├── optuna_studies.db
+│       ├── optuna_trials_xgb.csv
+│       ├── optuna_trials_lgb.csv
+│       ├── optuna_trials_cat.csv
+│       ├── optuna_all_trials.csv
+│       ├── feature_importance_comparison.png
+│       ├── tuned_feature_importance.png
+│       ├── calibration_curves.png
+│       ├── tuned_calibration.png
+│       ├── confusion_matrices.png
+│       ├── tuned_confusion_matrices.png
+│       ├── probability_distributions.png
+│       ├── optuna_diagnostics.png
+│       ├── correlation_matrix_top30.png
+│       ├── event_predictions.png
+│       └── predictions_*.csv           # Per-event prediction files
+├── data/                               # Empty (data lives in notebooks/data/)
 ├── models/
-│ ├── xgb_model.json # NB05 default XGBoost
-│ ├── lgb_model.txt # NB05 default LightGBM
-│ └── catboost_model.cbm # NB05 default CatBoost
-└── src/ # Empty (future)
-
+│   ├── xgb_baseline.json              # NB05 default XGBoost
+│   ├── lgb_baseline.txt               # NB05 default LightGBM
+│   ├── cat_baseline.cbm               # NB05 default CatBoost
+│   ├── xgb_tuned.json                 # NB06 tuned XGBoost (train split only)
+│   ├── lgb_tuned.txt                  # NB06 tuned LightGBM (train split only)
+│   ├── cat_tuned.cbm                  # NB06 tuned CatBoost (train split only)
+│   ├── xgb_prod.json                  # NB06 production XGBoost (all data)
+│   ├── lgb_prod.txt                   # NB06 production LightGBM (all data)
+│   └── cat_prod.cbm                   # NB06 production CatBoost (all data)
+└── src/                                # Empty (future)
 
 NOTE: Data path auto-detected in notebooks (`./data/` or `../data/`).
 The `./data/` directory at root is empty. All data lives in `./notebooks/data/`.
+
+**Model types:**
+- **Baseline** — default hyperparameters, trained on train split. For NB05 evaluation.
+- **Tuned** — Optuna best params, trained on train split. For fair NB05 vs NB06 comparison.
+- **Production** — Optuna best params, trained on ALL data. For real predictions in NB07.
 
 ---
 
@@ -222,123 +250,114 @@ Categorical encoding:
 - Manual win rate verification against hand-counted prior results ✅
 - Top correlations sanity check (no suspiciously high values) ✅
 
-### 05_modeling.ipynb (15 cells)
+### 05_modeling.ipynb (16 cells)
 
 | Cell | What | Notes |
 |------|------|-------|
-| 1    | Imports & load | Shape, date range, baseline |
-| 2    | Feature selection & temporal split | Train 2015–2023, Test 2024–2026 |
-| 3    | TimeSeriesSplit CV utility | 5-fold, returns metrics per fold |
-| 4    | XGBoost | CV + test evaluation |
-| 5    | LightGBM | CV + test evaluation |
-| 6    | CatBoost | CV + test evaluation |
-| 7    | Model comparison table | All models vs baseline |
-| 8    | Feature importance | 3-panel chart + consensus top 15 |
+| 1    | Intro | Goals and approach |
+| 2    | Imports & load | Shape, date range |
+| 3    | Feature selection & temporal split | Train < 2025-07-01, Test ≥ 2025-07-01 |
+| 4    | TimeSeriesSplit CV utility | 5-fold, per-fold + aggregate metrics |
+| 5    | XGBoost | CV + test evaluation |
+| 6    | LightGBM | CV + test evaluation |
+| 7    | CatBoost | CV + test evaluation |
+| 8    | Model comparison table | All models vs baseline + CV progression |
 | 9    | Ensemble | Average ensemble + agreement analysis |
-| 10   | Calibration | Curves + confidence buckets |
-| 11   | Ablation study | Profile leakage test (6 feature subsets) |
-| 12   | Error analysis | Confident wrong picks, by weight class, finish type, quarter |
-| 13   | Confusion matrices | 4-panel + classification report |
-| 14   | Probability distributions | Histogram by outcome + separation plot |
-| 15   | Save & summary | Models, predictions CSV, feature list |
+| 10   | Feature importance | 3-panel chart + consensus top 15 |
+| 11   | Ablation study | 9 feature subsets |
+| 12   | Calibration | Curves + confidence buckets |
+| 13   | Error analysis | Confident wrong picks, by weight class, finish type, monthly |
+| 14   | Confusion matrices | 4-panel + classification report |
+| 15   | Probability distributions | Histogram by outcome + separation plot |
+| 16   | Save & summary | Models, predictions, params, nb05_results.json |
 
 **NB05 Train/Test Split:**
-- Train: 2015-01-03 → 2023-12-16 (4,319 fights)
-- Test: 2024-01-13 → 2026-04-11 (1,166 fights)
-- Test baseline (always red): 55.2%
+- Train: 2015-01-03 → 2025-06-28 (5,093 fights)
+- Test: 2025-07-05 → 2026-04-12 (392 fights)
+- Test baseline (always red): 55.4%
 
-**NB05 Results:**
+**NB05 Results (default hyperparameters):**
 
-| Model    | CV Acc | Test Acc | Lift    | AUC   | LogLoss |
-|----------|--------|----------|---------|-------|---------|
-| Baseline | —      | 0.552    | —       | 0.500 | 0.689   |
-| XGBoost  | 0.684  | 0.751    | +0.199  | 0.828 | 0.513   |
-| LightGBM | 0.675  | 0.746    | +0.194  | 0.831 | 0.511   |
-| CatBoost | 0.675  | 0.758    | +0.206  | 0.836 | 0.504   |
-| Ensemble | —      | 0.759    | +0.207  | 0.837 | 0.499   |
+| Model    | CV Acc | Test Acc | Lift    | AUC   | LogLoss | Brier |
+|----------|--------|----------|---------|-------|---------|-------|
+| Baseline | —      | 0.554    | —       | 0.500 | 0.688   | —     |
+| XGBoost  | 0.693  | 0.768    | +0.214  | 0.864 | 0.458   | 0.232 |
+| LightGBM | 0.688  | 0.781    | +0.227  | 0.868 | 0.452   | 0.219 |
+| CatBoost | 0.703  | 0.786    | +0.232  | 0.872 | 0.457   | 0.214 |
+| Ensemble | —      | 0.773    | +0.219  | 0.871 | 0.448   | 0.146 |
+
+**CV Fold Accuracy Progression:**
+- XGBoost:  0.637 → 0.688 → 0.678 → 0.726 → 0.737 ↑
+- LightGBM: 0.647 → 0.666 → 0.659 → 0.735 → 0.730 ↑
+- CatBoost: 0.666 → 0.673 → 0.686 → 0.746 → 0.744 ↑
+- Clear pattern: more training data → better performance
 
 **NB05 Key Findings:**
 
-Feature importance — consensus top 15 dominated by profile and physical features:
-1. diff_profile_win_pct (unanimous #1 across all 3 models)
-2. diff_profile_total_fights (unanimous #2)
-3. diff_profile_slpm
-4. f1_profile_total_fights
-5. diff_age (#3 physical feature)
-6. diff_profile_str_acc_career
-- Zero rolling features in consensus top 15
+CatBoost dominates individually (0.786) but ensemble underperforms it (0.773) because XGBoost drags down the average. LightGBM has best calibration (lowest LL 0.452, lowest Brier 0.219 among individuals). Ensemble has best Brier overall (0.146) due to probability smoothing.
 
-Ablation study results:
+Agreement analysis:
+- Unanimous (3-0): 349 fights (89.0%) → 81.4% accuracy
+- Split (2-1): 43 fights (11.0%) → 44.2% accuracy (worse than coin flip)
+- When models disagree, the ensemble prediction is unreliable
 
-| Feature Set            | Features | Accuracy | AUC   | LogLoss |
-|------------------------|----------|----------|-------|---------|
-| All features           | 310      | 0.746    | 0.831 | 0.511   |
-| No profile             | 280      | 0.634    | 0.651 | 0.670   |
-| Diffs only             | 101      | 0.739    | 0.821 | 0.516   |
-| Diffs no profile       | 91       | 0.606    | 0.632 | 0.679   |
-| Profile only           | 35       | 0.730    | 0.812 | 0.535   |
-| Physical + activity    | 32       | 0.607    | 0.627 | 0.687   |
+**NB05 Ablation Results:**
 
-Profile leakage impact: +0.112 (All features vs No profile)
+| Feature Set                        | Features | Accuracy | AUC   | LogLoss | Lift    |
+|------------------------------------|----------|----------|-------|---------|---------|
+| All features                       | 310      | varies   | 0.831 | 0.511   | —       |
+| All − profile                      | 280      | lower    | 0.651 | 0.670   | −0.112  |
+| Diffs only                         | 101      | similar  | 0.821 | 0.516   | −0.007  |
+| Diffs − profile                    | 91       | lower    | 0.632 | 0.679   | −0.140  |
+| Profile only                       | 35       | strong   | 0.812 | 0.535   | —       |
+| Profile diffs only                 | ~10      | strong   | —     | —       | —       |
+| Career rolling only                | varies   | moderate | —     | —       | —       |
+| Recent form only (L3+L5)           | varies   | moderate | —     | —       | —       |
+| Physical + activity + categoricals | 32       | weak     | 0.627 | 0.687   | —       |
 
-Profile features are a mix of:
-1. **Legitimate signal** — pre-2015 career history rolling features can't access
-2. **Leakage** — post-fight-date career outcomes baked in UFC's current totals
+**NB05 saves:**
+- `models/xgb_baseline.json`, `lgb_baseline.txt`, `cat_baseline.cbm`
+- `data/test_predictions.csv`
+- `data/feature_list.txt` (310 features)
+- `data/default_params.json`
+- `data/nb05_results.json` (for NB06 fair comparison)
 
-Decision: keep profile features. They capture real pre-fight information (career record was public knowledge). The leakage component exists but the signal is valuable.
-
-Ensemble agreement analysis:
-- All 3 agree: 84.8% of fights (989/1166)
-- Unanimous accuracy: 79.4%
-- Disagreement fights (177): 56.5% accuracy (near coin flip)
-
-Error analysis highlights:
-- Jean Silva: model's nemesis — 4 fights, 4 confident wrong predictions (97-99%)
-- Best division: Welterweight (82.8% accuracy, +35pt lift)
-- Weakest: Light Heavyweight (+7.3pt lift)
-- Consistent across finish types: DEC 76.2%, KO/TKO 76.5%, SUB 74.1%
-- Performance stable over time, no degradation 2024→2026
-
-Classification balance:
-- Red recall: 80% | Blue recall: 71%
-- Model correctly identifies 71% of upsets (blue wins)
-
-Probability distribution:
-- Mean: 0.564, Std: 0.282, Range: 0.022–0.994
-- <40%: 33.3% | 40-60%: 19.6% | >60%: 47.1%
-- Model makes decisive calls, not clustering around baseline
-
-### 06_tuning.ipynb (13 cells) — IN PROGRESS
+### 06_tuning.ipynb (18 cells)
 
 | Cell | What | Notes |
 |------|------|-------|
-| 1    | Imports & load | + Optuna |
-| 2    | Features & split | Train 2015–2025, Test 2026 only |
-| 3    | CV helper | Pre-split indices, reused across trials |
-| 4    | XGBoost Optuna | 50 trials, 9 hyperparameters |
-| 5    | LightGBM Optuna | 50 trials, 10 hyperparameters |
-| 6    | CatBoost Optuna | 50 trials, 10 hyperparameters |
-| 7    | Train final models | Best params → full training set → test eval |
-| 8    | Before vs after | NB05 vs NB06 side-by-side |
-| 9    | Optuna visualization | Optimization history + parameter importance |
-| 10   | Tuned feature importance | Top 20 per model + consensus |
-| 11   | Calibration | Curves + confidence buckets |
-| 12   | Agreement analysis | Unanimous picks accuracy |
-| 13   | Save & summary | Joblib models, params JSON, predictions CSV |
+| 1    | Intro | Two-phase approach description |
+| 2    | Imports & load | + Optuna, load NB05 baselines from JSON |
+| 3    | Features & split | Same mid-2025 split as NB05 |
+| 4    | CV setup | 5-fold TimeSeriesSplit, pre-split indices |
+| 5    | Objective factory | Early stopping + pruning + SQLite storage |
+| 6    | XGBoost Optuna | 100 trials, resumable |
+| 7    | LightGBM Optuna | 100 trials, resumable |
+| 8    | CatBoost Optuna | 100 trials, resumable |
+| 8.5  | Export trials to CSV | Per-model + combined CSV |
+| 9    | Train tuned models & fair comparison | Same test set as NB05 |
+| 10   | Ensemble strategies | Equal, CatBoost-heavy, AUC-weighted, LL-weighted, drop-weakest |
+| 11   | Agreement & confidence tiers | VERY_HIGH / HIGH / MEDIUM / LOW / NO_CONF |
+| 12   | Optuna diagnostics | Convergence, accuracy distribution, tree counts, param importance |
+| 13   | Tuned feature importance | Top 20 per model + consensus |
+| 14   | Calibration | Curves + confidence buckets |
+| 15   | Error analysis | Confident wrong, by weight class, finish type, monthly |
+| 16   | Confusion matrices | 4-panel |
+| 17   | Phase 2: production models | Retrain on ALL data |
+| 18   | Save & summary | Native formats, params JSON, predictions CSV |
 
-**NB06 Train/Test Split:**
-- Train: 2015 → end of 2025 (~5,000+ fights)
-- Test: 2026 only (~138 fights)
-- More training data, smaller but more honest out-of-time test
+**NB06 Configuration:**
+- Split: Same as NB05 — Train < 2025-07-01 (5,093) / Test ≥ 2025-07-01 (392)
+- CV: 5-fold TimeSeriesSplit within training set
+- Optuna: 100 trials per model, TPE sampler (seed=42), minimize CV log loss
+- Early stopping: 50 rounds (n_estimators not tuned — set to 3000, early stop finds optimal)
+- Pruner: MedianPruner (n_startup_trials=10, n_warmup_steps=2)
+- Storage: SQLite (`optuna_studies.db`) — resumable if interrupted
+- Same 310 features as NB05
 
-**Optuna configuration:**
-- 50 trials per model (TPE sampler, seed=42)
-- Objective: minimize CV log loss (TimeSeriesSplit, 5 folds)
-- Per-trial reporting: accuracy, log loss, key hyperparams
-- Accuracy stored as user_attr for post-hoc analysis
+**Optuna search spaces:**
 
-**XGBoost search space:**
-- n_estimators: 200–1500
+XGBoost (8 hyperparameters):
 - max_depth: 3–9
 - learning_rate: 0.01–0.3 (log)
 - subsample: 0.5–1.0
@@ -348,8 +367,7 @@ Probability distribution:
 - min_child_weight: 1–20
 - gamma: 0.0–5.0
 
-**LightGBM search space:**
-- n_estimators: 200–1500
+LightGBM (9 hyperparameters):
 - max_depth: 3–12
 - learning_rate: 0.01–0.3 (log)
 - subsample: 0.5–1.0
@@ -360,8 +378,7 @@ Probability distribution:
 - num_leaves: 15–127
 - min_split_gain: 0.0–2.0
 
-**CatBoost search space:**
-- iterations: 200–1500
+CatBoost (9 hyperparameters):
 - depth: 3–9
 - learning_rate: 0.01–0.3 (log)
 - subsample: 0.5–1.0
@@ -372,12 +389,68 @@ Probability distribution:
 - border_count: 32–255
 - auto_class_weights: None or Balanced
 
+**NB06 Results (fair comparison — same test set as NB05):**
+
+| Model    | NB05 Acc | Tuned Acc | Δ Acc  | CV LL  | Test LL | AUC   | Brier |
+|----------|----------|-----------|--------|--------|---------|-------|-------|
+| XGBoost  | 0.768    | 0.791     | +0.023 | 0.5621 | 0.459   | 0.874 | 0.147 |
+| LightGBM | 0.781    | 0.791     | +0.010 | 0.5669 | 0.453   | 0.885 | 0.145 |
+| CatBoost | 0.786    | 0.781     | -0.005 | 0.5652 | 0.465   | 0.878 | 0.149 |
+| Ensemble | 0.773    | 0.791     | +0.018 | —      | 0.458   | 0.881 | 0.146 |
+
+**Tuning impact:**
+- XGBoost biggest winner (+2.3%) — default params were suboptimal
+- LightGBM modest gain (+1.0%) — defaults already reasonable
+- CatBoost slightly worse (-0.5%) — defaults famously good, Optuna overfit CV slightly
+- Tuning compressed the gap: all three models converged to 0.791
+- Best ensemble: Equal (1/3 each) — models perform identically, weighting doesn't help
+- Total tuning time: 24.7 minutes (100 trials × 3 models with pruning)
+
 **NB06 saves:**
-- `models/xgb_tuned.joblib`
-- `models/lgb_tuned.joblib`
-- `models/cat_tuned.joblib`
-- `data/best_params.json`
-- `data/test_predictions_tuned.csv`
+- Tuned models: `models/xgb_tuned.json`, `lgb_tuned.txt`, `cat_tuned.cbm`
+- Production models: `models/xgb_prod.json`, `lgb_prod.txt`, `cat_prod.cbm`
+- `data/best_params.json` (params + ensemble weights + test metrics)
+- `data/test_predictions_tuned.csv` (392 rows)
+- `data/optuna_studies.db` (SQLite — all trials persisted)
+- `data/optuna_trials_xgb.csv`, `optuna_trials_lgb.csv`, `optuna_trials_cat.csv`
+- `data/optuna_all_trials.csv` (combined)
+
+### 07_predict.ipynb (11 cells)
+
+| Cell | What | Notes |
+|------|------|-------|
+| 1    | Intro | —  |
+| 2    | Config | Model files, ensemble weights, event URL |
+| 3    | Imports & load data | model_data, fighters_clean, feature_list |
+| 4    | Load models | XGB + LGB + CAT, auto-load ensemble weights |
+| 5    | Scrape event | Auto-detect latest or use custom URL |
+| 6    | Match fighters & build features | Profile-only fallback for cold-start fighters |
+| 7    | Predict | Per-model probs + weighted ensemble + tiers |
+| 8    | Prediction card | Full card + full-features-only card |
+| 9    | Individual model breakdown | Per-model picks + disagreement detail |
+| 10   | Probability chart | Visual with model dots + ensemble bars |
+| 11   | Save predictions | Per-event CSV |
+
+**NB07 Features:**
+- Config cell to swap model sets (baseline / tuned / production)
+- Auto-detects latest event or accepts custom URL
+- Profile-only fallback: fighters in `fighters_clean` but not in `model_data` get ~15 profile + physical features, rest NaN. Tree models handle NaN natively.
+- Coverage tagging: each fight marked as `full` (>250 features) or `profile_only`
+- Separate output for full-feature fights only
+- Confidence tiers: VERY_HIGH (≥80%), HIGH (≥65%), MEDIUM (≥55%), LOW (<55%), NO_CONF (models disagree)
+- Automatic result scoring if event has completed
+- Per-event CSV saved with predictions, tiers, and results
+
+**NB07 Prediction pipeline:**
+1. Scrape event card from UFCStats
+2. For each fight, scrape detail page for correct red/blue corners + winner
+3. Match fighter names to historical data
+4. Pull each fighter's latest feature snapshot from model_data
+5. For unmatched fighters, fall back to profile stats from fighters_clean
+6. Compute all differentials (diff_* = f1 - f2)
+7. Run through all three models → individual probabilities
+8. Weighted ensemble → pick + confidence + tier
+9. Display + save
 
 ---
 
@@ -467,22 +540,6 @@ Average fight length: 11.1 minutes
 | Reach diff  | +0.052      |
 | Height diff | +0.047      |
 
-### Strike Location (winner vs loser per fight)
-
-| Location | Winner | Loser | Diff |
-|----------|--------|-------|------|
-| Head     | ~11    | ~7    | +4   |
-| Body     | ~4     | ~3    | +1   |
-| Leg      | ~4     | ~3    | +1   |
-
-### Strike Position (winner vs loser per fight)
-
-| Position  | Winner | Loser | Diff |
-|-----------|--------|-------|------|
-| Distance  | ~14    | ~10   | +4   |
-| Clinch    | ~2     | ~2    | ~0   |
-| Ground    | ~3     | ~1    | +2   |
-
 ### Weight Classes
 - Heavyweight: highest red WR (60%) and KO rate (47%)
 - Women's Strawweight: lowest KO rate (14%), still ~57% red WR
@@ -522,25 +579,6 @@ Average fight length: 11.1 minutes
 | diff_last5_td_landed           | +0.110      | LAST-5   |
 | diff_last5_ground_landed       | +0.109      | LAST-5   |
 
-### Key Feature Engineering Insights
-
-**Profile stats dominate** because they include full career history (pre-2015 fights). Rolling career stats only use fights in our 2015+ dataset, so a fighter who went 20-0 before 2015 shows career_win_rate = NaN at their first fight in our data, but profile_win_pct reflects their entire career.
-
-**Age is the #3 feature** (r=-0.204). Older red corner fighters lose more often. Since red = favorite, this means aging favorites underperform expectations. Genuinely new signal not available from fight stats.
-
-**Rolling features add unique signal** not captured by profile stats:
-- diff_last5_won (+0.181) — recent form matters
-- diff_last5_opp_str_landed (-0.158) — recent defensive performance
-- diff_win_streak (+0.126) — momentum effect
-- diff_last5_ctrl_seconds (+0.131) — grappling dominance trend
-
-**Profile vs Rolling comparison:**
-- Profile win_pct: +0.376 vs Rolling career_win_rate: +0.130
-- Profile str_acc: +0.236 vs Rolling str_acc_true: ~+0.10
-- Correlation between profile and rolling versions is moderate (~0.3-0.6)
-- They capture different information: profile = full career, rolling = recent in-dataset form
-- Both included for modeling (not redundant)
-
 ### NaN Coverage
 
 | Feature Group    | Features | Avg % Null | Notes                              |
@@ -557,82 +595,55 @@ NaN strategy: XGBoost/LightGBM/CatBoost handle NaN natively — no imputation ne
 
 ---
 
-## Modeling Results (Notebook 05)
+## Modeling Results
 
-### NB05 Configuration
-- Split: Train 2015–2023 (4,319 fights) / Test 2024–2026 (1,166 fights)
-- CV: 5-fold TimeSeriesSplit within training set
-- Features: 310 (all features including profile)
-- Default hyperparameters (conservative: depth 5, 500 trees, lr 0.05)
+### NB05 — Baseline Models (Default Hyperparameters)
 
-### NB05 Performance
+**Configuration:**
+- Split: Train < 2025-07-01 (5,093 fights) / Test ≥ 2025-07-01 (392 fights)
+- CV: 5-fold TimeSeriesSplit
+- Features: 310
+- Default params: depth 5, 500 trees, lr 0.05
 
 | Model    | CV Acc | Test Acc | Lift    | AUC   | LogLoss | Brier |
 |----------|--------|----------|---------|-------|---------|-------|
-| Baseline | —      | 0.552    | —       | 0.500 | 0.689   | 0.248 |
-| XGBoost  | 0.684  | 0.751    | +0.199  | 0.828 | 0.513   | 0.168 |
-| LightGBM | 0.675  | 0.746    | +0.194  | 0.831 | 0.511   | 0.167 |
-| CatBoost | 0.675  | 0.758    | +0.206  | 0.836 | 0.504   | 0.164 |
-| Ensemble | —      | 0.759    | +0.207  | 0.837 | 0.499   | 0.163 |
+| Baseline | —      | 0.554    | —       | 0.500 | 0.688   | —     |
+| XGBoost  | 0.693  | 0.768    | +0.214  | 0.864 | 0.458   | 0.232 |
+| LightGBM | 0.688  | 0.781    | +0.227  | 0.868 | 0.452   | 0.219 |
+| CatBoost | 0.703  | 0.786    | +0.232  | 0.872 | 0.457   | 0.214 |
+| Ensemble | —      | 0.773    | +0.219  | 0.871 | 0.448   | 0.146 |
 
-### CV-to-Test Pattern
-All three models showed improving accuracy with more training data:
-- XGBoost folds: 0.655 → 0.651 → 0.704 → 0.695 → 0.716
-- Final model trained on all 2015–2023 data achieved highest scores
-- This motivated NB06's expanded training set (2015–2025)
+### NB06 — Tuned Models (Optuna, 100 trials/model)
 
-### NB05 Ablation Results
+**Configuration:**
+- Same split as NB05 (fair comparison)
+- 100 trials/model, early stopping, MedianPruner
+- SQLite storage for resumability
+- Total tuning time: 24.7 minutes
 
-| Feature Set          | Features | Accuracy | AUC   | LogLoss | Lift vs Base |
-|----------------------|----------|----------|-------|---------|--------------|
-| All features         | 310      | 0.746    | 0.831 | 0.511   | +0.194       |
-| No profile           | 280      | 0.634    | 0.651 | 0.670   | +0.081       |
-| Diffs only           | 101      | 0.739    | 0.821 | 0.516   | +0.187       |
-| Diffs no profile     | 91       | 0.606    | 0.632 | 0.679   | +0.054       |
-| Profile only         | 35       | 0.730    | 0.812 | 0.535   | +0.178       |
-| Physical + activity  | 32       | 0.607    | 0.627 | 0.687   | +0.055       |
+| Model    | NB05 Acc | Tuned Acc | Δ Acc  | CV LL  | Test LL | AUC   | Brier |
+|----------|----------|-----------|--------|--------|---------|-------|-------|
+| XGBoost  | 0.768    | 0.791     | +0.023 | 0.5621 | 0.459   | 0.874 | 0.147 |
+| LightGBM | 0.781    | 0.791     | +0.010 | 0.5669 | 0.453   | 0.885 | 0.145 |
+| CatBoost | 0.786    | 0.781     | -0.005 | 0.5652 | 0.465   | 0.878 | 0.149 |
+| Ensemble | 0.773    | 0.791     | +0.018 | —      | 0.458   | 0.881 | 0.146 |
 
-**Profile impact: +11.2%** (All features vs No profile)
+**Key findings:**
+- Tuning compressed model gap: all three converged to ~0.791
+- XGBoost gained most (+2.3%), CatBoost defaults were already near-optimal
+- Equal-weight ensemble is best (models perform identically after tuning)
+- LightGBM: best AUC (0.885) and best Brier (0.145) — best probability estimates
+- Production models trained on all 5,485 fights with tuned params
 
-Profile features contain a mix of legitimate pre-fight signal (full career history including pre-2015) and potential leakage (UFC's current totals include post-fight outcomes). Decision: keep profile features — the career record was public knowledge before each fight. Rolling features provide clean +8pt lift over baseline independently.
+### Confidence Tier System
 
-### NB05 Error Analysis
-
-**Accuracy by weight class (test set):**
-
-| Weight Class          | Fights | Accuracy | Baseline | Lift   |
-|-----------------------|--------|----------|----------|--------|
-| Welterweight          | 134    | 0.828    | 0.478    | +0.350 |
-| Women's Bantamweight  | 46     | 0.826    | 0.522    | +0.304 |
-| Middleweight          | 148    | 0.777    | 0.574    | +0.203 |
-| Heavyweight           | 78     | 0.769    | 0.628    | +0.141 |
-| Bantamweight          | 135    | 0.756    | 0.541    | +0.215 |
-| Featherweight         | 143    | 0.741    | 0.483    | +0.258 |
-| Lightweight           | 154    | 0.734    | 0.558    | +0.176 |
-| Light Heavyweight     | 82     | 0.732    | 0.659    | +0.073 |
-| Flyweight             | 94     | 0.723    | 0.553    | +0.170 |
-| Women's Flyweight     | 58     | 0.724    | 0.603    | +0.121 |
-| Women's Strawweight   | 79     | 0.722    | 0.544    | +0.178 |
-
-**Accuracy by finish type:** DEC 76.2%, KO/TKO 76.5%, SUB 74.1%
-
-**Accuracy by quarter:** Stable 2024–2026, no degradation over time. 2026Q1 hit 81.6%.
-
-**Confident wrong predictions:** Jean Silva — 4 fights at 97-99% confidence, all wrong. Model's nemesis.
-
-**Model agreement:** When all 3 agree (84.8% of fights): 79.4% accuracy. Disagreement fights: 56.5%.
-
----
-
-## Tuning Results (Notebook 06) — IN PROGRESS
-
-### NB06 Configuration
-- Split: Train 2015–2025 / Test 2026 only (~138 fights)
-- CV: 5-fold TimeSeriesSplit within training set
-- Optuna: 50 trials per model, TPE sampler, minimize CV log loss
-- Same 310 features as NB05
-
-Results pending — tuning in progress.
+| Tier | Condition | Typical Accuracy |
+|------|-----------|-----------------|
+| 🟢 VERY_HIGH | Unanimous + conf ≥ 80% | ~80%+ |
+| 🟡 HIGH | Unanimous + conf 65-80% | ~75% |
+| 🟠 MEDIUM | Unanimous + conf 55-65% | ~65% |
+| 🔴 LOW | Unanimous + conf < 55% | ~55% |
+| ⚪ NO_CONF | Models disagree (2-1 split) | ~45% (skip) |
 
 ---
 
@@ -643,7 +654,8 @@ Results pending — tuning in progress.
 - Profile career stats are UFC's current totals (see ablation analysis in NB05)
 - 7 duplicate fighter names in fighters_clean — handled by dedup + Bruno Silva → NaN
 - `career_td_acc_true` has 50.2% null (many fighters never attempt takedowns)
-- NB06 test set is small (~138 fights) — accuracy will be noisy
+- LGBMClassifier has no `save_model()` — use `model.booster_.save_model()` instead
+- Profile-only predictions in NB07 are less reliable than full-feature predictions
 
 ---
 
@@ -665,6 +677,9 @@ Results pending — tuning in progress.
 | Averaging per-fight accuracy % is mathematically wrong | 04_feature_eng Cell 3 | Compute "true" accuracy from cumulative landed/attempted |
 | 7 duplicate fighter names cause InvalidIndexError | 04_feature_eng Cell 7 | Dedup by most total_fights; Bruno Silva → NaN |
 | `calibration_curve` import location changed in sklearn | 05_modeling Cell 1 | Import from `sklearn.calibration` not `sklearn.metrics` |
+| LGBMClassifier.save_model() doesn't exist | 05_modeling Cell 16 | Use `model.booster_.save_model()` |
+| Optuna trials lost on kernel crash | 06_tuning | Added SQLite storage + `load_if_exists=True` |
+| Mixing model sets in NB07 causes disagreements | 07_predict | Keep model sets matched (all baseline OR all prod) |
 
 ---
 
@@ -672,5 +687,3 @@ Results pending — tuning in progress.
 requests, beautifulsoup4, pandas, numpy, matplotlib, seaborn,
 scikit-learn, lxml, tqdm, ipykernel, xgboost, lightgbm, catboost,
 optuna, joblib
-
-
