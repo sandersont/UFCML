@@ -1,14 +1,14 @@
 fighter_1,fighter_2,bet_on,american,decimal,model_prob,implied_fair,edge,tier,confidence,unanimous,kelly_frac,stake,to_win,coverage
-Jamie Siraj,John Yannis,Jamie Siraj,-270,1.37,0.5003,0.7002,-0.1998,NO_CONF,0.5003,False,0.0,0.0,0.0,profile_only
-John Castaneda,Mark Vologdin,John Castaneda,-125,1.8,0.8482,0.5325,0.3157,VERY_HIGH,0.8482,True,0.1973,197.31,157.85,profile_only
-Jamey-Lyn Horth,JJ Aldrich,Jamey-Lyn Horth,-162,1.617,0.7547,0.5934,0.1613,HIGH,0.7547,True,0.1307,130.66,80.65,full
-Allan Nascimento,Mitch Raposo,Allan Nascimento,-192,1.521,0.857,0.6309,0.2261,VERY_HIGH,0.857,True,0.217,217.03,113.04,full
-Melissa Croden,Daria Zhelezniakova,Daria Zhelezniakova,130,2.3,0.8354,0.417,0.4184,VERY_HIGH,0.8354,True,0.1609,160.93,209.21,full
-Gokhan Saricam,Tanner Boser,Tanner Boser,130,2.3,0.7972,0.417,0.3802,HIGH,0.7972,True,0.1462,146.23,190.1,profile_only
-Robert Valentin Frey,Julien Leblanc,Robert Valentin Frey,-135,1.741,0.6179,0.5514,0.0664,MEDIUM,0.6179,True,0.0449,44.85,33.22,profile_only
-Marcio Barbosa,Dennis Buzukja,Marcio Barbosa,-485,1.206,0.7379,0.7958,-0.0579,HIGH,0.7379,True,0.0,0.0,0.0,profile_only
-Thiago Moises,Gauge Young,Thiago Moises,-130,1.769,0.5268,0.5427,-0.016,NO_CONF,0.5268,False,0.0,0.0,0.0,full
-Jasmine Jasudavicius,Karine Silva,Jasmine Jasudavicius,-310,1.323,0.5896,0.7258,-0.1362,MEDIUM,0.5896,True,0.0,0.0,0.0,full
-Mandel Nallo,Jai Herbert,Mandel Nallo,-170,1.588,0.7632,0.6038,0.1594,HIGH,0.7632,True,0.1355,135.52,79.72,profile_only
-Kyler Phillips,Charles Jourdain,Kyler Phillips,-155,1.645,0.5649,0.583,-0.0181,NO_CONF,0.5649,False,0.0,0.0,0.0,full
 Mike Malott,Gilbert Burns,Mike Malott,-310,1.323,0.6995,0.7258,-0.0262,HIGH,0.6995,True,0.0,0.0,0.0,full
+Charles Jourdain,Kyler Phillips,Charles Jourdain,-155,1.645,0.516,0.583,-0.067,NO_CONF,0.516,False,0.0,0.0,0.0,full
+Mandel Nallo,Jai Herbert,Mandel Nallo,-170,1.588,0.7632,0.6038,0.1594,HIGH,0.7632,True,0.2,20.0,11.76,profile_only
+Karine Silva,Jasmine Jasudavicius,Jasmine Jasudavicius,250,3.5,0.5122,0.2742,0.238,NO_CONF,0.5122,False,0.0952,9.52,23.8,full
+Gauge Young,Thiago Moises,Thiago Moises,110,2.1,0.5446,0.4573,0.0873,NO_CONF,0.5446,False,0.0794,7.94,8.73,full
+Marcio Barbosa,Dennis Buzukja,Marcio Barbosa,-485,1.206,0.7379,0.7958,-0.0579,HIGH,0.7379,True,0.0,0.0,0.0,profile_only
+Robert Valentin,Julien Leblanc,Robert Valentin,-135,1.741,0.6179,0.5514,0.0664,MEDIUM,0.6179,True,0.0897,8.97,6.64,profile_only
+Gokhan Saricam,Tanner Boser,Tanner Boser,130,2.3,0.7972,0.417,0.3802,HIGH,0.7972,True,0.2,20.0,26.0,profile_only
+Melissa Croden,Daria Zhelezniakova,Daria Zhelezniakova,130,2.3,0.8354,0.417,0.4184,VERY_HIGH,0.8354,True,0.2,20.0,26.0,full
+Allan Nascimento,Mitch Raposo,Allan Nascimento,-192,1.521,0.857,0.6309,0.2261,VERY_HIGH,0.857,True,0.2,20.0,10.42,full
+Jamey-Lyn Horth,JJ Aldrich,Jamey-Lyn Horth,-162,1.617,0.7547,0.5934,0.1613,HIGH,0.7547,True,0.2,20.0,12.35,full
+John Castaneda,Mark Vologdin,John Castaneda,-125,1.8,0.8482,0.5325,0.3157,VERY_HIGH,0.8482,True,0.2,20.0,16.0,profile_only
+Jamie Siraj,John Yannis,Jamie Siraj,-270,1.37,0.5003,0.7002,-0.1998,NO_CONF,0.5003,False,0.0,0.0,0.0,profile_only

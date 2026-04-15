@@ -1,0 +1,14 @@
+fighter_1,fighter_2,weight_class,winner,coverage,XGBoost_prob,LightGBM_prob,CatBoost_prob,Ensemble_prob,pick,confidence,unanimous,tier,correct
+Renato Moicano,Chris Duncan,Lightweight,Renato Moicano,full,0.34398264,0.46359774084206984,0.4709870587139658,0.42614652125762037,Chris Duncan,0.5738534787423797,True,MEDIUM,False
+Virna Jandiroba,Tabatha Ricci,Women's Strawweight,Virna Jandiroba,full,0.9399077,0.9371300238091295,0.8169468447471363,0.8979050745908745,Virna Jandiroba,0.8979050745908745,True,VERY_HIGH,True
+Abdul Rakhman Yakhyaev,Brendson Ribeiro,Light Heavyweight,Abdul Rakhman Yakhyaev,profile_only,0.9420742,0.9492350127400494,0.8856030926981033,0.9255448455104165,Abdul Rakhman Yakhyaev,0.9255448455104165,True,VERY_HIGH,True
+Ethyn Ewing,Rafael Estevam,Bantamweight,Ethyn Ewing,profile_only,0.36326808,0.4396471590453061,0.4536428445610996,0.4188108051659928,Rafael Estevam,0.5811891948340072,True,MEDIUM,False
+Tommy McMillen,Manolo Zecchini,Featherweight,Tommy McMillen,profile_only,0.99201244,0.9956768125725383,0.9673869695966603,0.98492691160679,Tommy McMillen,0.98492691160679,True,VERY_HIGH,True
+Jose Delano,Robert Ruchala,Featherweight,Jose Delano,profile_only,0.94333667,0.9312081281066373,0.8644617489403177,0.9129108837797446,Jose Delano,0.9129108837797446,True,VERY_HIGH,True
+Guilherme Pat,Thomas Petersen,Heavyweight,Thomas Petersen,profile_only,0.46742573,0.48608263322330164,0.5581587805408916,0.5038386594949515,Guilherme Pat,0.5038386594949515,False,NO_CONF,False
+Alessandro Costa,Stewart Nicoll,Flyweight,Alessandro Costa,profile_only,0.82826835,0.8690606355619167,0.8122259867450748,0.836434664119736,Alessandro Costa,0.836434664119736,True,VERY_HIGH,True
+Lando Vannata,Darrius Flowers,Lightweight,Darrius Flowers,full,0.644598,0.5066300831704941,0.7127919762238863,0.6212778823553678,Lando Vannata,0.6212778823553678,True,MEDIUM,False
+Alice Pereira,Hailey Cowan,Women's Bantamweight,Alice Pereira,profile_only,0.9303458,0.9384580334650906,0.8952664912869317,0.9212646376494248,Alice Pereira,0.9212646376494248,True,VERY_HIGH,True
+Azamat Bekoev,Tresean Gore,Middleweight,Tresean Gore,full,0.96203196,0.940655945730578,0.9334193823792779,0.9452745497884736,Azamat Bekoev,0.9452745497884736,True,VERY_HIGH,False
+Dione Barbosa,Melissa Gatto,Women's Flyweight,Dione Barbosa,full,0.41318926,0.4263382114440012,0.5160124570178463,0.4518014582089096,Melissa Gatto,0.5481985417910904,False,NO_CONF,False
+Kai Kamaka III,Dakota Hope,Lightweight,Kai Kamaka III,profile_only,0.8330303,0.8318714417672273,0.7950602609837972,0.8199053219128112,Kai Kamaka III,0.8199053219128112,True,VERY_HIGH,True

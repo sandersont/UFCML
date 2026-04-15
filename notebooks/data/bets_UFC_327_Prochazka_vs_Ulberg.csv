@@ -1,6 +1,6 @@
 fighter_1,fighter_2,bet_on,american,decimal,model_prob,implied_fair,edge,tier,confidence,unanimous,kelly_frac,stake,to_win,coverage
-Jiri Prochazka,Carlos Ulberg,Carlos Ulberg,-110,1.909,0.8262,0.5,0.3262,VERY_HIGH,0.8262,True,0.1794,179.43,163.12,full
-Azamat Murzakanov,Paulo Costa,Azamat Murzakanov,-245,1.408,0.787,0.6806,0.1064,HIGH,0.787,True,0.1304,130.4,53.22,full
-Curtis Blaydes,Josh Hokit,Josh Hokit,-120,1.833,0.7279,0.5217,0.2062,HIGH,0.7279,True,0.1237,123.7,103.08,full
-Dominick Reyes,Johnny Walker,Dominick Reyes,-162,1.617,0.6473,0.5934,0.0539,MEDIUM,0.6473,True,0.0437,43.69,26.97,full
-Cub Swanson,Nate Landwehr,Cub Swanson,-122,1.82,0.7013,0.5261,0.1753,HIGH,0.7013,True,0.1069,106.91,87.63,full
+Jiri Prochazka,Carlos Ulberg,Carlos Ulberg,-110,1.909,0.8277,0.5,0.3277,VERY_HIGH,0.8277,True,0.2,20.0,18.18,full
+Azamat Murzakanov,Paulo Costa,Azamat Murzakanov,-245,1.408,0.9368,0.6806,0.2562,VERY_HIGH,0.9368,True,0.2,20.0,8.16,full
+Curtis Blaydes,Josh Hokit,Josh Hokit,-120,1.833,0.6814,0.5217,0.1596,HIGH,0.6814,True,0.1916,19.16,15.97,full
+Dominick Reyes,Johnny Walker,Dominick Reyes,-162,1.617,0.5498,0.5934,-0.0436,LOW,0.5498,True,0.0,0.0,0.0,full
+Cub Swanson,Nate Landwehr,Cub Swanson,-122,1.82,0.7505,0.5261,0.2244,HIGH,0.7505,True,0.2,20.0,16.39,full

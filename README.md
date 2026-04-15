@@ -1,6 +1,6 @@
 ## Last Updated
-After completing notebooks 01–07 (scraping, cleaning, EDA, feature engineering, modeling, tuning, predictions).
-All notebooks complete and tested.
+After completing notebooks 01–08 (scraping, cleaning, EDA, feature engineering, modeling, tuning, predictions, betting).
+Notebook 09 (odds scraper) in progress.
 
 ## Architecture
 
@@ -13,6 +13,8 @@ All notebooks complete and tested.
 ├── create_05_modeling.py               # Generates notebooks/05_modeling.ipynb
 ├── create_06_tuning.py                 # Generates notebooks/06_tuning.ipynb
 ├── create_07_predict.py                # Generates notebooks/07_predict.ipynb
+├── create_08_betting.py                # Generates notebooks/08_betting.ipynb
+├── create_09_odds_scraper.py           # Generates notebooks/09_odds_scraper.ipynb (WIP)
 ├── requirements.txt
 ├── .gitignore
 ├── PROJECT_STATUS.md                   # This file
@@ -24,6 +26,8 @@ All notebooks complete and tested.
 │   ├── 05_modeling.ipynb               # 16 cells — baseline models + ablation
 │   ├── 06_tuning.ipynb                 # 18 cells — Optuna hyperparameter tuning
 │   ├── 07_predict.ipynb                # 11 cells — event predictions
+│   ├── 08_betting.ipynb                # 16 cells — betting value finder
+│   ├── 09_odds_scraper.ipynb           # WIP — historical odds from BestFightOdds
 │   └── data/                           # All CSV/JSON files live here
 │       ├── events.csv
 │       ├── events_clean.csv
@@ -57,7 +61,9 @@ All notebooks complete and tested.
 │       ├── optuna_diagnostics.png
 │       ├── correlation_matrix_top30.png
 │       ├── event_predictions.png
-│       └── predictions_*.csv           # Per-event prediction files
+│       ├── betting_edge_chart.png
+│       ├── predictions_*.csv           # Per-event prediction files
+│       └── bets_*.csv                  # Per-event betting analysis files
 ├── data/                               # Empty (data lives in notebooks/data/)
 ├── models/
 │   ├── xgb_baseline.json              # NB05 default XGBoost
@@ -77,7 +83,7 @@ The `./data/` directory at root is empty. All data lives in `./notebooks/data/`.
 **Model types:**
 - **Baseline** — default hyperparameters, trained on train split. For NB05 evaluation.
 - **Tuned** — Optuna best params, trained on train split. For fair NB05 vs NB06 comparison.
-- **Production** — Optuna best params, trained on ALL data. For real predictions in NB07.
+- **Production** — Optuna best params, trained on ALL data. For real predictions in NB07/NB08.
 
 ---
 
@@ -452,6 +458,114 @@ CatBoost (9 hyperparameters):
 8. Weighted ensemble → pick + confidence + tier
 9. Display + save
 
+### 08_betting.ipynb (16 cells)
+
+| Cell | What | Notes |
+|------|------|-------|
+| 1 | md | Intro + betting rules |
+| 2 | md | Config instructions |
+| 3 | code | **Edit: EVENT_URL, BANKROLL, ODDS** |
+| 4 | code | Imports, load production models + data |
+| 5 | code | Odds conversion (American → decimal → remove vig) |
+| 6 | code | Scrape event card from UFCStats |
+| 7 | code | Match fighters, build features, compute diffs |
+| 8 | code | Run 3 models → ensemble → picks + tiers |
+| 9 | code | Calculate edge + half-Kelly stakes + filter |
+| 10 | code | **Bet card display** |
+| 11 | code | Full analysis table (all fights) |
+| 12 | code | Edge visualization (bar chart + scatter) |
+| 13 | code | Risk summary + scenario analysis |
+| 14 | md | Results instructions |
+| 15 | code | **Score results after event** |
+| 16 | code | Save CSV |
+
+**NB08 Betting Rules:**
+- Only bet when all 3 models are **unanimous**
+- Only bet when ensemble confidence **>= 55%** (MEDIUM tier or above)
+- Only bet when **positive edge** exists (model prob > market implied prob)
+- Stake = **half-Kelly** = (edge / (decimal_odds - 1)) / 2
+- User inputs American odds directly in config cell
+
+**NB08 Odds Pipeline:**
+1. User pastes American moneyline odds per fight in config cell
+2. Convert American → decimal → raw implied probability
+3. Remove vig: divide each implied prob by sum (overround)
+4. Edge = model probability - fair implied probability
+5. Half-Kelly fraction = (edge / (decimal_odds - 1)) / 2
+6. Stake = kelly_frac * BANKROLL
+
+**NB08 Workflow:**
+1. Edit config cell: paste EVENT_URL, set BANKROLL, fill in ODDS
+2. Run All → get bet card with qualified picks, stakes, edges
+3. After event completes → re-run Cell 6 + Cell 15 to score results
+
+**NB08 First Live Results — UFC 327: Prochazka vs. Ulberg:**
+
+| Pick | Odds | Model | Market | Edge | Stake | Result | P&L |
+|------|------|-------|--------|------|-------|--------|-----|
+| Carlos Ulberg | -110 | 82.6% | 50.0% | +32.6% | \$179 | WIN | +\$163 |
+| Azamat Murzakanov | -245 | 78.7% | 68.1% | +10.6% | \$130 | LOSS | -\$130 |
+| Josh Hokit | -120 | 72.8% | 52.2% | +20.6% | \$124 | WIN | +\$103 |
+| Dominick Reyes | -162 | 64.7% | 59.3% | +5.4% | \$44 | WIN | +\$27 |
+| Cub Swanson | -122 | 70.1% | 52.6% | +17.5% | \$107 | WIN | +\$88 |
+
+**UFC 327 Summary: 4W-1L | +\$250.40 | ROI +42.9%**
+
+**NB08 saves:**
+- `data/bets_{event_slug}.csv` (per-event betting analysis)
+- `data/betting_edge_chart.png`
+
+---
+
+## In Progress
+
+### 09_odds_scraper.ipynb (WIP)
+
+**Goal:** Scrape historical odds from BestFightOdds for numbered UFC events, enabling backtesting.
+
+**BFO Site Structure (discovered):**
+- Archive page (`/archive`) only shows ~20 recent events across all promotions
+- Search (`/search?query=...`) returns max 25 results, fuzzy matching, unreliable for automated use
+- Event URLs require full slug: `/events/ufc-327-4074` (ID-only URLs 302 redirect to homepage)
+- Event page has two tables: Table 0 = left headers, Table 1 = odds data
+- Event name in `<h1>` tag, date in `<span class="table-header-date">`
+- Title format: `"UFC 300 Odds: Pereira vs Hill for April 14 | Best Fight Odds"`
+- Fighter names in `<span class="t-b-fcc">`
+- Moneyline odds in `<td class="but-sg">` (props use `but-sgp` — skip)
+- Prop rows have `class="pr"` — skip
+- Fights come in consecutive row pairs (fighter 1 then fighter 2)
+- Odds text includes arrows: `+207▲`, `-255▼` — must strip
+- Batch search works: searching "ufc 327 326 325 324 323" finds multiple events
+- Search results in Table 1 with date in td[0] and event name+link in td[1]
+
+**BFO Event URLs Found So Far:**
+
+| Event | BFO URL |
+|-------|---------|
+| UFC 311 | /events/ufc-311-3596 |
+| UFC 313 | /events/ufc-313-3650 |
+| UFC 315 | /events/ufc-315-3708 |
+| UFC 316 | /events/ufc-316-3702 |
+| UFC 319 | /events/ufc-319-3800 |
+| UFC 320 | /events/ufc-320-3853 |
+| UFC 321 | /events/ufc-321-odds-3780 |
+| UFC 322 | /events/ufc-322-3924 |
+| UFC 323 | /events/ufc-323-3951 |
+| UFC 324 | /events/ufc-324-3973 |
+| UFC 326 | /events/ufc-326-4065 |
+| UFC 327 | /events/ufc-327-4074 |
+
+**Still missing:** UFC 312, 314, 317, 318, 325 (user collecting URLs manually)
+
+**Scope change:** Only scraping 2025+ numbered UFC events (~17 events) instead of all events back to 2015. Sufficient for backtest of production model period.
+
+**Next steps:**
+- User provides remaining BFO event URLs
+- Build scraper to parse odds from each event page
+- Match BFO fighter names to UFCStats fighter names (fuzzy matching)
+- Save `odds_historical.csv`
+- Then build notebook 10: backtest analysis using model predictions + real odds
+
 ---
 
 ## Data Summary
@@ -639,11 +753,21 @@ NaN strategy: XGBoost/LightGBM/CatBoost handle NaN natively — no imputation ne
 
 | Tier | Condition | Typical Accuracy |
 |------|-----------|-----------------|
-| 🟢 VERY_HIGH | Unanimous + conf ≥ 80% | ~80%+ |
-| 🟡 HIGH | Unanimous + conf 65-80% | ~75% |
-| 🟠 MEDIUM | Unanimous + conf 55-65% | ~65% |
-| 🔴 LOW | Unanimous + conf < 55% | ~55% |
-| ⚪ NO_CONF | Models disagree (2-1 split) | ~45% (skip) |
+| VERY_HIGH | Unanimous + conf >= 80% | ~80%+ |
+| HIGH | Unanimous + conf 65-80% | ~75% |
+| MEDIUM | Unanimous + conf 55-65% | ~65% |
+| LOW | Unanimous + conf < 55% | ~55% |
+| NO_CONF | Models disagree (2-1 split) | ~45% (skip) |
+
+### NB08 — Live Betting Results
+
+**UFC 327: Prochazka vs. Ulberg (first live card)**
+- 5 qualified bets from 5 fights (all numbered event main card)
+- Record: 4W-1L (80%)
+- Total staked: \$584.13 (58.4% of bankroll)
+- P&L: +\$250.40
+- ROI: +42.9%
+- Only loss: Murzakanov (-245) — heaviest favorite, Costa upset
 
 ---
 
@@ -655,7 +779,8 @@ NaN strategy: XGBoost/LightGBM/CatBoost handle NaN natively — no imputation ne
 - 7 duplicate fighter names in fighters_clean — handled by dedup + Bruno Silva → NaN
 - `career_td_acc_true` has 50.2% null (many fighters never attempt takedowns)
 - LGBMClassifier has no `save_model()` — use `model.booster_.save_model()` instead
-- Profile-only predictions in NB07 are less reliable than full-feature predictions
+- Profile-only predictions in NB07/NB08 are less reliable than full-feature predictions
+- NB08 half-Kelly can exceed 100% bankroll when many +EV bets on same card (scale down or cap)
 
 ---
 
@@ -680,6 +805,8 @@ NaN strategy: XGBoost/LightGBM/CatBoost handle NaN natively — no imputation ne
 | LGBMClassifier.save_model() doesn't exist | 05_modeling Cell 16 | Use `model.booster_.save_model()` |
 | Optuna trials lost on kernel crash | 06_tuning | Added SQLite storage + `load_if_exists=True` |
 | Mixing model sets in NB07 causes disagreements | 07_predict | Keep model sets matched (all baseline OR all prod) |
+| BFO ID-only URLs 302 redirect to homepage | 09_odds_scraper | Must use full slug URLs |
+| BFO search returns max 25 results with fuzzy matching | 09_odds_scraper | Batch numbered event searches; collect URLs manually |
 
 ---
 
