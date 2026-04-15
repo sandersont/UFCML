@@ -1,0 +1,13 @@
+fighter_1,fighter_2,weight_class,winner,coverage,XGBoost_prob,LightGBM_prob,CatBoost_prob,Ensemble_prob,pick,confidence,unanimous,tier,correct
+Jiri Prochazka,Carlos Ulberg,Light Heavyweight,Carlos Ulberg,full,0.14709821,0.18745157315827055,0.22881126420772777,0.1877682377816975,Carlos Ulberg,0.8122317622183025,True,VERY_HIGH,True
+Azamat Murzakanov,Paulo Costa,Light Heavyweight,Paulo Costa,full,0.7963009,0.7579783162370743,0.8990756422647875,0.8177031697873718,Azamat Murzakanov,0.8177031697873718,True,VERY_HIGH,False
+Curtis Blaydes,Josh Hokit,Heavyweight,Josh Hokit,profile_only,0.22072423,0.26608044163521777,0.2978678371910169,0.26153134432409797,Josh Hokit,0.738468655675902,True,HIGH,True
+Dominick Reyes,Johnny Walker,Light Heavyweight,Dominick Reyes,full,0.7285385,0.6537540658742981,0.538713808555202,0.640271429682858,Dominick Reyes,0.640271429682858,True,MEDIUM,True
+Cub Swanson,Nate Landwehr,Featherweight,Cub Swanson,full,0.75504994,0.6908083136606794,0.6606569824299445,0.7021015248000115,Cub Swanson,0.7021015248000115,True,HIGH,True
+Patricio Pitbull,Aaron Pico,Featherweight,Aaron Pico,profile_only,0.52794546,0.49351424050676684,0.6984044796134018,0.5732307307743515,Patricio Pitbull,0.5732307307743515,False,NO_CONF,False
+Kevin Holland,Randy Brown,Welterweight,Kevin Holland,full,0.60976535,0.5810576745094079,0.6002793689454679,0.5969744283391863,Kevin Holland,0.5969744283391863,True,MEDIUM,True
+Mateusz Gamrot,Esteban Ribovics,Lightweight,Mateusz Gamrot,full,0.71220666,0.7238560279385058,0.7600695066439053,0.7319708587265494,Mateusz Gamrot,0.7319708587265494,True,HIGH,True
+Tatiana Suarez,Loopy Godinez,Women's Strawweight,Tatiana Suarez,full,0.8688348,0.8742317956906117,0.8472887432302422,0.8633654355549529,Tatiana Suarez,0.8633654355549529,True,VERY_HIGH,True
+Chris Padilla,MarQuel Mederos,Lightweight,,profile_only,0.5590744,0.5747128229670585,0.6786340292231183,0.604080003401209,Chris Padilla,0.604080003401209,True,MEDIUM,
+Kelvin Gastelum,Vicente Luque,Middleweight,Vicente Luque,full,0.443438,0.44745849602475946,0.5127772654644269,0.4678444618612611,Vicente Luque,0.5321555381387388,False,NO_CONF,True
+Charles Radtke,Francisco Prado,Welterweight,Charles Radtke,full,0.64647996,0.6008294098744381,0.6613751583973494,0.6361645569446627,Charles Radtke,0.6361645569446627,True,MEDIUM,True
