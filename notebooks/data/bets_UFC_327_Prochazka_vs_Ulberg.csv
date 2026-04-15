@@ -1,6 +1,6 @@
 fighter_1,fighter_2,bet_on,american,decimal,model_prob,implied_fair,edge,tier,confidence,unanimous,kelly_frac,stake,to_win,coverage
 Jiri Prochazka,Carlos Ulberg,Carlos Ulberg,-110,1.909,0.8262,0.5,0.3262,VERY_HIGH,0.8262,True,0.1794,179.43,163.12,full
 Azamat Murzakanov,Paulo Costa,Azamat Murzakanov,-245,1.408,0.787,0.6806,0.1064,HIGH,0.787,True,0.1304,130.4,53.22,full
-Josh Hokit,Curtis Blaydes,Josh Hokit,-120,1.833,0.87,0.5217,0.3483,VERY_HIGH,0.87,True,0.209,208.96,174.13,full
+Curtis Blaydes,Josh Hokit,Josh Hokit,-120,1.833,0.7279,0.5217,0.2062,HIGH,0.7279,True,0.1237,123.7,103.08,full
 Dominick Reyes,Johnny Walker,Dominick Reyes,-162,1.617,0.6473,0.5934,0.0539,MEDIUM,0.6473,True,0.0437,43.69,26.97,full
 Cub Swanson,Nate Landwehr,Cub Swanson,-122,1.82,0.7013,0.5261,0.1753,HIGH,0.7013,True,0.1069,106.91,87.63,full
